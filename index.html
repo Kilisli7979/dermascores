@@ -1,0 +1,2496 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DermaScores</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+*{box-sizing:border-box;}
+body{margin:0;font-family:"Inter",system-ui; background:#0D1117; color:#E6EDF3; transition:.2s;}
+body.light{background:#F5F7FA;color:#0F172A;}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 22px;border-bottom:1px solid rgba(255,255,255,.1);backdrop-filter:blur(18px);background:rgba(13,17,23,.7);}
+button{border:none;padding:8px 14px;border-radius:10px;font-weight:700;cursor:pointer;}
+.tab{padding:10px 14px;border-radius:50px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.07);cursor:pointer;margin-right:8px;white-space:nowrap;}
+.tab.active{background:#2388FF;color:#fff;border-color:#2388FF;}
+.tabs{display:flex;overflow-x:auto;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.1);}
+.container{padding:20px;max-width:900px;margin:auto;}
+.card{padding:18px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);margin-bottom:16px;}
+input,select{width:100%;padding:10px;margin-top:4px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:#0E1520;color:#fff;}
+.score{font-size:32px;font-weight:900;margin-top:12px;}
+.grid{display:grid;gap:14px;} @media(min-width:860px){.cols-2{grid-template-columns:1fr 1fr;}}
+.pill{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;margin-top:8px;}
+.ok{background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.6);}
+.warn{background:rgba(245,158,11,.18);border:1px solid rgba(245,158,11,.6);}
+.bad{background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.6);}
+.region{font-weight:700;margin-top:6px;}
+.small{opacity:.8;font-size:.9rem;}
+</style>
+</head>
+
+<body>
+<header>
+  <div style="font-size:20px;font-weight:800">DermaScores</div>
+  <div>
+    <button id="langBtn" style="font-size:18px">🇹🇷</button>
+    <button id="themeBtn" style="font-size:18px">🌙</button>
+  </div>
+</header>
+
+<div class="tabs" id="tabs"></div>
+<div class="container" id="content"></div>
+
+<script>
+
+/* ===== LANGUAGE SYSTEM ===== */
+let lang="tr";
+const languages=["tr","en","fr","de","it","ja"];
+const flags={tr:"🇹🇷",en:"🇬🇧",fr:"🇫🇷",de:"🇩🇪",it:"🇮🇹",ja:"🇯🇵"};
+
+const T={
+tr:{t:"Alanları doldurun.",r:{h:"Baş/Boyun",u:"Üst ekstremiteler",t:"Gövde",l:"Alt ekstremiteler"},
+    f:{ery:"Eritem",ind:"İndürasyon/Ödem",scal:"Skuamlanma",area:"Alan %",exc:"Ekskoriasyon",lich:"Likenifikasyon",int:"Yorum"}},
+en:{t:"Fill the fields.",r:{h:"Head/Neck",u:"Upper limbs",t:"Trunk",l:"Lower limbs"},
+    f:{ery:"Erythema",ind:"Edema/Papulation",scal:"Scaling",area:"Area %",exc:"Excoriation",lich:"Lichenification",int:"Interpretation"}},
+fr:{t:"Remplissez les champs.",r:{h:"Tête/Cou",u:"Membres sup.",t:"Tronc",l:"Membres inf."},
+    f:{ery:"Érythème",ind:"Induration",scal:"Desquamation",area:"Zone %",exc:"Excoriation",lich:"Lichénification",int:"Interprétation"}},
+de:{t:"Felder ausfüllen.",r:{h:"Kopf/Hals",u:"Obere Gliedmaßen",t:"Rumpf",l:"Untere Gliedmaßen"},
+    f:{ery:"Erythem",ind:"Induration",scal:"Schuppung",area:"Fläche %",exc:"Exkoriation",lich:"Lichenifikation",int:"Interpretation"}},
+it:{t:"Compila i campi.",r:{h:"Testa/Collo",u:"Arti superiori",t:"Tronco",l:"Arti inferiori"},
+    f:{ery:"Eritema",ind:"Edema",scal:"Desquamazione",area:"Area %",exc:"Escoriazione",lich:"Lichenificazione",int:"Interpretazione"}},
+ja:{t:"入力してください。",r:{h:"頭/首",u:"上肢",t:"体幹",l:"下肢"},
+    f:{ery:"紅斑",ind:"硬さ/浮腫",scal:"鱗屑",area:"面積 %",exc:"掻破",lich:"苔癬化",int:"評価"}}
+};
+
+/* ===== SCORE LIST ===== */
+const calculators=["PASI","EASI","VASI","SCORAD","UAS7","GAGS","Hurley","IGA","DLQI","IHS4","SALT","POEM","PDAI","BPDAI"];
+
+/* ===== HELPER SHORTHANDS ===== */
+const $=s=>document.querySelector(s);
+function nf(id,label,cb,min=0,max=999,step=1,val=0){
+  return `<label>${label}</label><input id="${id}" type="number" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${cb}()">`;
+}
+function sf(id,label,arr,cb,val=0){
+  return `<label>${label}</label><select id="${id}" onchange="${cb}()">${arr.map(v=>`<option value="${v}" ${v===val?'selected':''}>${v}</option>`).join('')}</select>`;
+}
+
+/* ===== ADIM 3 — Tabs + Buttons + Router (placeholder) ===== */
+let active = "PASI";
+
+/* Dil düğmesi */
+document.getElementById("langBtn").onclick = () => {
+  const i = languages.indexOf(lang);
+  lang = languages[(i + 1) % languages.length];
+  document.getElementById("langBtn").textContent = flags[lang];
+  renderTabs();
+  renderContent();
+};
+
+/* Tema düğmesi */
+document.getElementById("themeBtn").onclick = () => {
+  document.body.classList.toggle("light");
+  document.getElementById("themeBtn").textContent =
+    document.body.classList.contains("light") ? "☀️" : "🌙";
+};
+
+/* Sekmeler */
+function renderTabs(){
+  document.getElementById("tabs").innerHTML = calculators
+    .map(c => `<div class="tab ${c===active?'active':''}" onclick="setTab('${c}')">${c}</div>`)
+    .join("");
+}
+function setTab(c){
+  active = c;
+  renderTabs();
+  renderContent();
+}
+
+/* Geçici içerik (bir sonraki adımda gerçek hesaplayıcıları ekleyeceğiz) */
+function viewPlaceholder(name){
+  document.getElementById("content").innerHTML =
+    `<div class="card">
+       <div class="title">${name}</div>
+       <div class="small">${T[lang].t}</div>
+     </div>`;
+}
+
+/* Router (şimdilik placeholder çağırıyor) */
+function renderContent(){
+  viewPlaceholder(active);
+}
+
+/* başlat */
+renderTabs();
+renderContent();
+
+/* ===== ADIM 4 — PASI + EASI (final) ===== */
+
+/* PASI */
+function viewPASI(){
+  const tt = T[lang];
+  const regions = [["h",0.1],["u",0.2],["t",0.3],["l",0.4]]; // head, upper, trunk, lower
+
+  let h = `<div class="card">
+    <div class="title">PASI</div>
+    <div class="small">${tt.pasi?.intro || "Psoriasis Area and Severity Index"}</div>
+    <div class="grid cols-2" style="margin-top:8px">`;
+
+  regions.forEach(([k])=>{
+    h += `<div class="card">
+      <div class="region">${tt.r[k]}</div>
+      ${sf(k+"e", tt.f.ery,  [0,1,2,3,4], "pasiUpdate")}
+      ${sf(k+"i", tt.f.ind,  [0,1,2,3,4], "pasiUpdate")}
+      ${sf(k+"s", tt.f.scal, [0,1,2,3,4], "pasiUpdate")}
+      ${nf(k+"a", tt.f.area, "pasiUpdate", 0, 100, 1, 0)}
+    </div>`;
+  });
+
+  h += `</div>
+    <div class="score" id="pasiScore">0.00</div>
+    <div id="pasiBand" class="pill ok">${tt.f.int}: ${(tt.pasi?.m || "Mild")}</div>
+  </div>`;
+
+  document.getElementById("content").innerHTML = h;
+  pasiUpdate();
+}
+function pasiUpdate(){
+  const tt = T[lang];
+  const regions = [["h",0.1],["u",0.2],["t",0.3],["l",0.4]];
+  const get = id => +document.getElementById(id).value;
+  const areaToScore = p => p==0?0 : p<=10?1 : p<=30?2 : p<=50?3 : p<=70?4 : p<=90?5 : 6;
+
+  let total = 0;
+  regions.forEach(([k,w])=>{
+    const sev = get(k+"e") + get(k+"i") + get(k+"s"); // 0–12
+    const a = areaToScore(get(k+"a"));                // 0–6
+    total += sev * a * w;
+  });
+
+  document.getElementById("pasiScore").textContent = total.toFixed(2);
+  const band = total < 7 ? ["ok", tt.pasi?.m || "Mild"]
+             : total <=12 ? ["warn", tt.pasi?.o || "Moderate"]
+             : ["bad", tt.pasi?.a || "Severe"];
+  const el = document.getElementById("pasiBand");
+  el.className = "pill " + band[0];
+  el.textContent = `${tt.f.int}: ${band[1]}`;
+}
+
+/* EASI (DOĞRU FORMÜL: (E+Ö/P+Eksk+Liken)×alan(0–6)×ağırlık, 0–72) */
+function viewEASI(){
+  const tt = T[lang];
+  const L = {
+    ery: tt.f.ery,
+    eda: tt.f.ind || (lang==="tr"?"Ödem/Papül":"Edema/Papulation"),
+    exc: tt.f.exc || (lang==="tr"?"Ekskoriasyon":"Excoriation"),
+    lich: tt.f.lich || (lang==="tr"?"Likenifikasyon":"Lichenification"),
+    area: tt.f.area,
+    region: tt.r
+  };
+  const regions = [["h",0.1],["u",0.2],["t",0.3],["l",0.4]];
+
+  let h = `<div class="card">
+    <div class="title">EASI</div>
+    <div class="small">${tt.easi?.intro || "Eczema Area and Severity Index"}</div>
+    <div class="grid cols-2" style="margin-top:8px">`;
+
+  regions.forEach(([k])=>{
+    h += `<div class="card">
+      <div class="region">${L.region[k]}</div>
+      ${sf(k+"e", L.ery,  [0,1,2,3], "easiUpdate")}
+      ${sf(k+"d", L.eda,  [0,1,2,3], "easiUpdate")}
+      ${sf(k+"x", L.exc,  [0,1,2,3], "easiUpdate")}
+      ${sf(k+"l", L.lich, [0,1,2,3], "easiUpdate")}
+      ${nf(k+"a", L.area, "easiUpdate", 0, 100, 1, 0)}
+    </div>`;
+  });
+
+  h += `</div>
+    <div class="score" id="easiScore">0.00</div>
+    <div class="small">${lang==="tr" ? "Aralık: 0–72" : "Range: 0–72"}</div>
+  </div>`;
+
+  document.getElementById("content").innerHTML = h;
+  easiUpdate();
+}
+function easiUpdate(){
+  const regions = [["h",0.1],["u",0.2],["t",0.3],["l",0.4]];
+  const get = id => +document.getElementById(id).value;
+  const areaToScore = p => p==0?0 : p<=9?1 : p<=29?2 : p<=49?3 : p<=69?4 : p<=89?5 : 6;
+
+  let total = 0;
+  regions.forEach(([k,w])=>{
+    const sev = get(k+"e") + get(k+"d") + get(k+"x") + get(k+"l"); // 0–12
+    const a = areaToScore(get(k+"a"));                              // 0–6
+    total += sev * a * w;
+  });
+  document.getElementById("easiScore").textContent = total.toFixed(2);
+}
+
+/* Router'ı PASI + EASI ile güncelle */
+function renderContent(){
+  const map = {
+    PASI: viewPASI,
+    EASI: viewEASI
+  };
+  (map[active] || viewPlaceholder)(active);
+}
+
+/* ===== ADIM 5 — TÜM SKORLAR ===== */
+
+/* SCORAD */
+function viewSCORAD(){
+  const t=T[lang].scorad||{A:"Area %",B:"Intensity 0-18",C:"Pruritus/Sleep 0-20"};
+  content.innerHTML=`
+  <div class="card"><div class="title">SCORAD</div>
+  ${nf("scA",t.A,"scoradUpdate",0,100)}
+  ${nf("scB",t.B,"scoradUpdate",0,18)}
+  ${nf("scC",t.C,"scoradUpdate",0,20)}
+  <div class="score" id="scoradScore">0</div></div>`;
+  scoradUpdate();
+}
+function scoradUpdate(){ scoradScore.textContent=(+scA.value/5 + 7*(+scB.value)/2 + +scC.value).toFixed(2); }
+
+/* VASI global % */
+function viewVASI(){
+  content.innerHTML=`<div class="card"><div class="title">VASI</div>
+  ${nf("vasi_g","%","vasiUpdate",0,100)}
+  <div class="score" id="vasiScore">0</div></div>`;
+  vasiUpdate();
+}
+function vasiUpdate(){ vasiScore.textContent=(+vasi_g.value).toFixed(2); }
+
+/* UAS7 = 7*(hives + itch) */
+function viewUAS7(){
+  const u=T[lang].uas7;
+  content.innerHTML=`<div class="card"><div class="title">UAS7</div>
+  ${sf("uH",u.h,[0,1,2,3],"uas7Update")}
+  ${sf("uP",u.p,[0,1,2,3],"uas7Update")}
+  <div class="score" id="uas7Score">0</div></div>`;
+  uas7Update();
+}
+function uas7Update(){ uas7Score.textContent=(7*(+uH.value + +uP.value)); }
+
+/* GAGS */
+function viewGAGS(){
+  const g=T[lang].gags||{com:"Comedones",pap:"Papules",pus:"Pustules",nod:"Nodules"};
+  content.innerHTML=`
+  <div class="card"><div class="title">GAGS</div>
+  ${nf("ggc",g.com,"gagsUpdate")}
+  ${nf("ggp",g.pap,"gagsUpdate")}
+  ${nf("ggs",g.pus,"gagsUpdate")}
+  ${nf("ggn",g.nod,"gagsUpdate")}
+  <div class='small'>Score = C + 2P + 3Pu + 4N</div>
+  <div class="score" id="gagsScore">0</div></div>`;
+  gagsUpdate();
+}
+function gagsUpdate(){ gagsScore.textContent=(+ggc.value + 2*+ggp.value + 3*+ggs.value + 4*+ggn.value); }
+
+/* Hurley */
+function viewHurley(){
+  content.innerHTML=`<div class="card"><div class="title">Hurley</div>
+  ${sf("hur","Stage",["I","II","III"],"hurleyUpdate")}
+  <div class="score" id="hurleyScore">I</div></div>`;
+  hurleyUpdate();
+}
+function hurleyUpdate(){ hurleyScore.textContent=hur.value; }
+
+/* IGA */
+function viewIGA(){
+  content.innerHTML=`<div class="card"><div class="title">IGA</div>
+  ${sf("iga","IGA",[0,1,2,3,4],"igaUpdate")}
+  <div class="score" id="igaScore">0</div></div>`;
+  igaUpdate();
+}
+function igaUpdate(){ igaScore.textContent=iga.value; }
+
+/* DLQI (10×0–3) */
+function viewDLQI(){
+  content.innerHTML=`<div class="card"><div class="title">DLQI</div>
+  <div class="grid cols-2">
+    ${Array.from({length:10}).map((_,i)=>sf("d"+i,"Q"+(i+1),[0,1,2,3],"dlqiUpdate")).join("")}
+  </div>
+  <div class="score" id="dlqiScore">0</div></div>`;
+  dlqiUpdate();
+}
+function dlqiUpdate(){ let s=0; for(let i=0;i<10;i++)s+=+document.getElementById("d"+i).value; dlqiScore.textContent=s; }
+
+/* IHS4 */
+function viewIHS4(){
+  const ih=T[lang].ihs4||{n:"N",a:"A",f:"F"};
+  content.innerHTML=`<div class="card"><div class="title">IHS4</div>
+  ${nf("ihn",ih.n,"ihs4Update")}
+  ${nf("iha",ih.a,"ihs4Update")}
+  ${nf("ihf",ih.f,"ihs4Update")}
+  <div class="score" id="ihs4Score">0</div></div>`;
+  ihs4Update();
+}
+function ihs4Update(){ ihs4Score.textContent=(+ihn.value + 2*+iha.value + 4*+ihf.value); }
+
+/* SALT */
+function viewSALT(){
+  const s=T[lang].salt;
+  content.innerHTML=`<div class="card"><div class="title">SALT</div>
+  ${nf("sv",s.v,"saltUpdate")}
+  ${nf("srt",s.rt,"saltUpdate")}
+  ${nf("slt",s.lt,"saltUpdate")}
+  ${nf("soc",s.oc,"saltUpdate")}
+  <div class="score" id="saltScore">0</div></div>`;
+  saltUpdate();
+}
+function saltUpdate(){ saltScore.textContent=(+sv.value*0.40 + +srt.value*0.18 + +slt.value*0.18 + +soc.value*0.24).toFixed(2); }
+
+/* POEM */
+function viewPOEM(){
+  content.innerHTML=`<div class="card"><div class="title">POEM</div>
+  ${nf("poem","0–28","poemUpdate",0,28)}
+  <div class="score" id="poemScore">0</div></div>`;
+  poemUpdate();
+}
+function poemUpdate(){ poemScore.textContent=(+poem.value); }
+
+/* PDAI */
+function viewPDAI(){
+  const p=T[lang].pdai;
+  content.innerHTML=`<div class="card"><div class="title">PDAI</div>
+  ${nf("pd1",p.skin,"pdaiUpdate")}
+  ${nf("pd2",p.scalp,"pdaiUpdate")}
+  ${nf("pd3",p.muc,"pdaiUpdate")}
+  ${nf("pd4",p.dam,"pdaiUpdate")}
+  <div class="score" id="pdaiScore">0</div></div>`;
+  pdaiUpdate();
+}
+function pdaiUpdate(){ pdaiScore.textContent=(+pd1.value + +pd2.value + +pd3.value + +pd4.value); }
+
+/* BPDAI */
+function viewBPDAI(){
+  const b=T[lang].bpdai;
+  content.innerHTML=`<div class="card"><div class="title">BPDAI</div>
+  ${nf("bp1",b.skin,"bpdaiUpdate")}
+  ${nf("bp2",b.muc,"bpdaiUpdate")}
+  ${nf("bp3",b.pru,"bpdaiUpdate")}
+  <div class="score" id="bpdaiScore">0</div></div>`;
+  bpdaiUpdate();
+}
+function bpdaiUpdate(){ bpdaiScore.textContent=(+bp1.value + +bp2.value + +bp3.value); }
+
+/* ROUTER UPDATE */
+function renderContent(){
+  const m = {
+    PASI:viewPASI, EASI:viewEASI, VASI:viewVASI, SCORAD:viewSCORAD, UAS7:viewUAS7,
+    GAGS:viewGAGS, Hurley:viewHurley, IGA:viewIGA, DLQI:viewDLQI, IHS4:viewIHS4,
+    SALT:viewSALT, POEM:viewPOEM, PDAI:viewPDAI, BPDAI:viewBPDAI
+  };
+  (m[active]||viewPlaceholder)(active);
+}
+
+/* ===== ADIM 6 — MEDICAL DISCLAIMER FOOTER ===== */
+document.body.insertAdjacentHTML("beforeend", `
+<footer style="text-align:center; font-size:12px; opacity:0.6; margin-top:40px; padding:20px;">
+⚕️ <b>Medical Disclaimer:</b><br>
+This tool is for clinical support & education only. 
+Not a substitute for professional medical judgment.<br>
+Use at your own discretion.<br><br>
+
+<b>Tıbbi Sorumluluk Reddi:</b><br>
+Bu araç yalnızca eğitim ve klinik karar destek amaçlıdır. 
+Profesyonel tıbbi değerlendirmenin yerine geçmez. 
+Kendi mesleki sorumluluğunuzla kullanınız.
+</footer>
+`);
+
+/* ===== ADIM 7 — PDF EXPORT ===== */
+
+// PDF Button ekle
+document.body.insertAdjacentHTML("beforeend", `
+<button id="pdfBtn" style="
+ position:fixed; right:20px; bottom:20px;
+ background:#2388FF; color:white; border:none;
+ padding:12px 18px; border-radius:10px; font-weight:700;
+ cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.2); z-index:999;
+">📄 PDF</button>
+`);
+
+async function generatePDF(){
+  const name = prompt("Hasta Adı / Patient Name:");
+  if(!name) return;
+
+  const date = new Date().toLocaleDateString();
+
+  const title = `DermaScores Clinical Report`;
+  const subtitle = `Patient: ${name} | Date: ${date}`;
+  const currentScore = active;
+
+  // geçici başlık ekle
+  const temp = document.createElement("div");
+  temp.id = "pdfHeaderBlock";
+  temp.innerHTML = `
+    <div style="text-align:center; font-weight:800; font-size:20px; margin-bottom:8px">${title}</div>
+    <div style="text-align:center; font-size:14px; opacity:.8; margin-bottom:12px">${subtitle}</div>
+    <div style="text-align:center; font-size:14px; margin-bottom:12px">Score Type: ${currentScore}</div>
+  `;
+  document.getElementById("content").prepend(temp);
+
+  const element = document.getElementById("content");
+  const opt = {
+    filename: `DermaScore_${currentScore}_${name}_${date}.pdf`,
+    jsPDF: { format: "a4" },
+    html2canvas: { scale: 2 }
+  };
+
+  // html2pdf yükle
+  if(!window.html2pdf){
+    await new Promise(r=>{
+      const s=document.createElement("script");
+      s.src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.js";
+      s.onload=r;
+      document.body.appendChild(s);
+    });
+  }
+
+  await html2pdf().from(element).set(opt).save();
+
+  // temp header sil
+  document.getElementById("pdfHeaderBlock").remove();
+}
+
+// butona event bağla
+document.getElementById("pdfBtn").onclick = generatePDF;
+
+/* ===== ADIM 8 — PATIENT DATA STORAGE ===== */
+
+// Hasta verileri (local)
+let patients = JSON.parse(localStorage.getItem("dermaPatients")||"{}");
+
+// UI: hasta seçme dropdown + kayıt butonu
+document.body.insertAdjacentHTML("beforeend", `
+<div id="patientPanel" style="
+ position:fixed; left:20px; bottom:20px; z-index:999;
+ background:#111; color:white; padding:12px 14px; border-radius:10px;
+ font-size:13px; border:1px solid rgba(255,255,255,.2);
+">
+<select id="patientSelect" style="padding:6px; border-radius:8px; margin-bottom:6px;"></select><br>
+<button id="savePatientBtn" style="
+ background:#16a34a; color:white; border:none; padding:8px 12px;
+ border-radius:8px; cursor:pointer; font-weight:700; width:100%;
+">💾 Save Score</button>
+</div>
+`);
+
+// dropdown doldur
+function refreshPatientList(){
+  const sel = document.getElementById("patientSelect");
+  sel.innerHTML = `<option value="">+ New Patient</option>` +
+    Object.keys(patients).map(p=>`<option value="${p}">${p}</option>`).join("");
+}
+refreshPatientList();
+
+// hasta seçilince geçmiş göster
+document.getElementById("patientSelect").onchange = ()=>{
+  const p = patientSelect.value;
+  if(!p) return;
+
+  const data = patients[p]||[];
+  let msg = `📋 History for ${p}:\n\n`;
+  data.forEach(r=>{
+    msg += `• ${r.date} — ${r.score}: ${r.value}\n`;
+  });
+  alert(msg);
+};
+
+// skoru kaydet
+document.getElementById("savePatientBtn").onclick = ()=>{
+
+  let name = patientSelect.value;
+  if(!name){
+    name = prompt("Patient Name:");
+    if(!name) return;
+    patients[name] = [];
+    refreshPatientList();
+    patientSelect.value = name;
+  }
+
+  const scoreName = active;
+  const valEl = document.querySelector(".score");
+  const scoreVal = valEl ? valEl.innerText : "N/A";
+
+  const rec = {date:new Date().toLocaleString(), score:scoreName, value:scoreVal};
+  patients[name].push(rec);
+
+  // kaydet
+  localStorage.setItem("dermaPatients", JSON.stringify(patients));
+
+  alert(`Saved ✅\n${name} — ${scoreName}: ${scoreVal}`);
+};
+
+/* ===== ADIM 9 — SCORE HISTORY CHART ===== */
+
+// Grafik butonu + modal
+document.body.insertAdjacentHTML("beforeend", `
+<button id="chartBtn" style="
+ position:fixed; right:20px; bottom:76px; z-index:999;
+ background:#10b981; color:#fff; border:none; padding:10px 14px;
+ border-radius:10px; font-weight:800; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.2);
+">📈 Chart</button>
+
+<div id="chartModal" style="
+ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; z-index:1000;
+ align-items:center; justify-content:center;
+">
+  <div style="background:#0D1117; color:#E6EDF3; padding:16px; border-radius:12px; width:min(720px,92%); border:1px solid rgba(255,255,255,.15)">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px">
+      <div style="font-weight:800">Score History</div>
+      <button id="closeChart" style="background:#ef4444; color:#fff; border:none; padding:6px 10px; border-radius:8px; font-weight:700; cursor:pointer">✕</button>
+    </div>
+    <div style="font-size:13px; opacity:.8; margin-bottom:8px">
+      Patient: <span id="chartPatient">—</span> • Score: <span id="chartScoreType">—</span>
+    </div>
+    <canvas id="scoreChart" height="260"></canvas>
+  </div>
+</div>
+`);
+
+// Chart.js yükleyici (CDN)
+async function ensureChartJS(){
+  if(window.Chart) return;
+  await new Promise(res=>{
+    const s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
+    s.onload=res; document.body.appendChild(s);
+  });
+}
+
+// Yardımcı: skoru sayıya çevir (örn "12.34" → 12.34)
+function toNum(x){
+  const n = parseFloat(String(x).replace(',', '.'));
+  return isFinite(n) ? n : null;
+}
+
+// Aktif hastanın aktif skoruna göre geçmiş veriyi hazırla
+function buildSeries(){
+  const selName = document.getElementById("patientSelect")?.value || "";
+  const scoreName = active;
+  const all = JSON.parse(localStorage.getItem("dermaPatients")||"{}");
+  const rows = (all[selName]||[]).filter(r=>r.score===scoreName);
+
+  // tarih artan sıraya
+  rows.sort((a,b)=> new Date(a.date) - new Date(b.date));
+
+  return {
+    patient: selName || "(select patient)",
+    score: scoreName,
+    labels: rows.map(r=>r.date),
+    values: rows.map(r=> toNum(r.value))
+  };
+}
+
+let scoreChart;
+async function openChart(){
+  await ensureChartJS();
+  const modal = document.getElementById("chartModal");
+  const ctx = document.getElementById("scoreChart").getContext("2d");
+  const d = buildSeries();
+
+  document.getElementById("chartPatient").textContent = d.patient;
+  document.getElementById("chartScoreType").textContent = d.score;
+
+  // mevcut chart varsa yok et
+  if(scoreChart){ scoreChart.destroy(); }
+
+  scoreChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: d.labels,
+      datasets: [{
+        label: d.score,
+        data: d.values,
+        tension: 0.25,
+        pointRadius: 3
+      }]
+    },
+    options: {
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ ticks:{ autoSkip:true, maxTicksLimit:6 } },
+        y:{ beginAtZero:true }
+      }
+    }
+  });
+
+  modal.style.display = "flex";
+}
+
+document.getElementById("chartBtn").onclick = openChart;
+document.getElementById("closeChart").onclick = ()=> document.getElementById("chartModal").style.display="none";
+document.getElementById("chartModal").onclick = (e)=>{ if(e.target.id==="chartModal"){ document.getElementById("chartModal").style.display="none"; } };
+
+/* ===== ADIM 10 — UI MAKIYAJI / MODERN GLASS + ANIM ===== */
+
+const style = document.createElement("style");
+style.innerHTML = `
+/* Smooth transitions */
+* {
+  transition: all .25s ease;
+}
+
+/* Header glass & shadow */
+header {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15) !important;
+}
+
+/* Dark mode header */
+body.dark header {
+  background: rgba(13,17,23,0.65);
+}
+
+/* Buttons hover glow */
+button {
+  transition: .2s;
+}
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+}
+
+/* Tabs pill redesign */
+.tab {
+  border-radius: 14px !important;
+  font-weight: 700;
+  backdrop-filter: blur(18px);
+}
+.tab:hover {
+  transform: scale(1.03);
+}
+.tab.active {
+  box-shadow: 0 0 12px rgba(35,136,255,.6);
+}
+
+/* Cards glass look */
+.card {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  border-radius: 16px !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+}
+body.light .card {
+  background: rgba(255,255,255,0.8) !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+}
+
+/* Inputs & selects modern */
+input, select {
+  border-radius: 12px !important;
+  background: rgba(255,255,255,0.08) !important;
+  border: 1px solid rgba(255,255,255,0.18) !important;
+}
+input:focus, select:focus {
+  box-shadow: 0 0 8px rgba(35,136,255,.8) !important;
+  border-color: #2388FF !important;
+}
+
+/* Score number glow */
+.score {
+  text-shadow: 0 0 12px rgba(35,136,255,.6);
+}
+
+/* Footer subtle fade */
+footer {
+  opacity: 0.65 !important;
+}
+
+/* Floating buttons polish */
+#pdfBtn, #chartBtn, #patientPanel {
+  backdrop-filter: blur(14px) saturate(180%);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.2);
+}
+#patientPanel {
+  background: rgba(0,0,0,0.45) !important;
+}
+body.light #patientPanel {
+  background: rgba(255,255,255,0.7) !important;
+  color:#000 !important;
+}
+`;
+document.head.appendChild(style);
+
+/* ===== PATCH — Safe labels for UAS7 / SALT / PDAI / BPDAI across languages ===== */
+function __(tr,en){ return (lang==='tr' ? tr : en); }
+
+/* UAS7 (override) */
+function viewUAS7(){
+  const u = T[lang].uas7 || { h: __('Kabarcık (Hives)','Hives'), p: __('Kaşıntı','Itch') };
+  content.innerHTML=`<div class="card"><div class="title">UAS7</div>
+    ${sf("uH",u.h,[0,1,2,3],"uas7Update")}
+    ${sf("uP",u.p,[0,1,2,3],"uas7Update")}
+    <div class="score" id="uas7Score">0</div></div>`;
+  uas7Update();
+}
+function uas7Update(){ uas7Score.textContent = (7*(+uH.value + +uP.value)); }
+
+/* SALT (override) */
+function viewSALT(){
+  const s = T[lang].salt || {
+    v: __('Vertex (40%)','Vertex (40%)'),
+    rt: __('Sağ temporal (18%)','Right temporal (18%)'),
+    lt: __('Sol temporal (18%)','Left temporal (18%)'),
+    oc: __('Oksipital (24%)','Occipital (24%)')
+  };
+  content.innerHTML=`<div class="card"><div class="title">SALT</div>
+    ${nf("sv",s.v,"saltUpdate",0,100,1,0)}
+    ${nf("srt",s.rt,"saltUpdate",0,100,1,0)}
+    ${nf("slt",s.lt,"saltUpdate",0,100,1,0)}
+    ${nf("soc",s.oc,"saltUpdate",0,100,1,0)}
+    <div class="score" id="saltScore">0</div></div>`;
+  saltUpdate();
+}
+function saltUpdate(){
+  saltScore.textContent = (+sv.value*0.40 + +srt.value*0.18 + +slt.value*0.18 + +soc.value*0.24).toFixed(2);
+}
+
+/* PDAI (override) */
+function viewPDAI(){
+  const p = T[lang].pdai || {
+    skin: __('Deri aktivitesi','Skin activity'),
+    scalp: __('Saçlı deri','Scalp'),
+    muc: __('Mukoza aktivitesi','Mucosal activity'),
+    dam: __('Hasar','Damage')
+  };
+  content.innerHTML=`<div class="card"><div class="title">PDAI</div>
+    ${nf("pd1",p.skin,"pdaiUpdate",0,250,1,0)}
+    ${nf("pd2",p.scalp,"pdaiUpdate",0,15,1,0)}
+    ${nf("pd3",p.muc,"pdaiUpdate",0,120,1,0)}
+    ${nf("pd4",p.dam,"pdaiUpdate",0,13,1,0)}
+    <div class="score" id="pdaiScore">0</div></div>`;
+  pdaiUpdate();
+}
+function pdaiUpdate(){ pdaiScore.textContent = (+pd1.value + +pd2.value + +pd3.value + +pd4.value); }
+
+/* BPDAI (override) */
+function viewBPDAI(){
+  const b = T[lang].bpdai || {
+    skin: __('Deri aktivitesi','Skin activity'),
+    muc:  __('Mukoza aktivitesi','Mucosal activity'),
+    pru:  __('Kaşıntı VAS (0–30)','Pruritus VAS (0–30)')
+  };
+  content.innerHTML=`<div class="card"><div class="title">BPDAI</div>
+    ${nf("bp1",b.skin,"bpdaiUpdate",0,120,1,0)}
+    ${nf("bp2",b.muc,"bpdaiUpdate",0,120,1,0)}
+    ${nf("bp3",b.pru,"bpdaiUpdate",0,30,1,0)}
+    <div class="score" id="bpdaiScore">0</div></div>`;
+  bpdaiUpdate();
+}
+function bpdaiUpdate(){ bpdaiScore.textContent = (+bp1.value + +bp2.value + +bp3.value); }
+
+</script>
+
+<style>
+/* === Dark/Light Select Dropdown Fix === */
+
+/* Sistem renk şeması */
+body { color-scheme: dark; }
+body.light { color-scheme: light; }
+
+/* Select & Option görünümü — Dark theme */
+select, option {
+  background-color: #0E1520 !important;
+  color: #E6EDF3 !important;
+  border-color: rgba(255,255,255,.18) !important;
+}
+
+/* Light theme */
+body.light select,
+body.light option {
+  background-color: #ffffff !important;
+  color: #0F172A !important;
+  border-color: rgba(0,0,0,.12) !important;
+}
+
+/* Hover */
+select:hover {
+  border-color: #2388FF !important;
+}
+</style>
+
+<script>
+/* === VASI (advanced) — bölge bazlı el birimi × depigmentasyon ===
+   Formül: VASI = Σ (Hand units × Depig.%/100)
+   Hand units (HU): 0–6 (yarım HU destekli)
+   Depig.%: {0,10,25,50,75,90,100}
+*/
+function viewVASI(){
+  const tt = T[lang];
+  const L = {
+    hu: (lang==='tr' ? 'El birimi (0–6)' : 'Hand units (0–6)'),
+    dp: (lang==='tr' ? 'Depigmentasyon %' : 'Depigmentation %')
+  };
+  const regions = [
+    ['h', tt.r?.h || 'Head/Neck'],
+    ['u', tt.r?.u || 'Upper limbs'],
+    ['t', tt.r?.t || 'Trunk'],
+    ['l', tt.r?.l || 'Lower limbs']
+  ];
+
+  let h = `<div class="card">
+    <div class="title">VASI</div>
+    <div class="grid cols-2" style="margin-top:8px">`;
+
+  regions.forEach(([k,label])=>{
+    h += `<div class="card">
+      <div class="region">${label}</div>
+      ${sf(k+"hu", L.hu, [0,0.5,1,2,3,4,5,6], "vasiUpdate", 0)}
+      ${sf(k+"dp", L.dp, [0,10,25,50,75,90,100], "vasiUpdate", 0)}
+    </div>`;
+  });
+
+  h += `</div>
+    <div class="score" id="vasiScore">0.00</div>
+    <div class="small">${
+      lang==='tr'
+        ? 'Formül: Σ (El birimi × Depig.% / 100)'
+        : 'Formula: Σ (Hand units × Depig.% / 100)'
+    }</div>
+  </div>`;
+
+  document.getElementById("content").innerHTML = h;
+  vasiUpdate();
+}
+
+function vasiUpdate(){
+  const get = id => +document.getElementById(id).value;
+  const regs = ['h','u','t','l'];
+  let total = 0;
+  regs.forEach(k=>{
+    const hu = get(k+'hu');
+    const dp = get(k+'dp'); // 0..100
+    total += hu * (dp/100);
+  });
+  document.getElementById("vasiScore").textContent = total.toFixed(2);
+}
+</script>
+
+<script>
+/* ========= SCORAD (Detaylı) — Rule-of-Nines + 6 yoğunluk bulgusu + subjektif skor =========
+   Formül: SCORAD = A/5 + (7*B)/2 + C
+   A: Vücut yüzey alanı (%) 0–100  → kural-ı dokuzlar ile otomatik hesaplanır
+   B: Klinik şiddet (6 bulgu, her biri 0–3) → toplam 0–18
+   C: Subjektif kaşıntı (0–10) + uyku kaybı (0–10) → toplam 0–20
+   Yorum: <25 Hafif, 25–50 Orta, >50 Şiddetli
+=========================================================================================== */
+
+function __l(tr, en){ return (typeof lang!=='undefined' && lang==='tr') ? tr : en; }
+
+function viewSCORAD(){
+  const L = {
+    title: "SCORAD",
+    rule:  __l("Kural-ı 9 (alan)","Rule of Nines (extent)"),
+    intens: __l("Yoğunluk","Intensity"),
+    subj:  __l("Subjektif semptomlar (son 3 gün)","Subjective symptoms (last 3 days)"),
+    extentHint: __l("Her bölgedeki tutulumu % olarak girin (0–100). Toplam A otomatik hesaplanır.",
+                    "Enter involvement % (0–100) for each region. A is auto-calculated."),
+    sumNote: __l("Formül: SCORAD = A/5 + 7×B/2 + C","Formula: SCORAD = A/5 + 7×B/2 + C"),
+    A: "A",
+    B: "B",
+    C: "C",
+    bands: {m: __l("Hafif","Mild"), o: __l("Orta","Moderate"), s: __l("Şiddetli","Severe")},
+    regions: [
+      {id:"sc_h", label: __l("Baş/ Boyun (9%)","Head/Neck (9%)"), w:9},
+      {id:"sc_u", label: __l("Üst ekstremiteler (18%)","Upper limbs (18%)"), w:18},
+      {id:"sc_t", label: __l("Gövde (36%)","Trunk (36%)"), w:36},
+      {id:"sc_l", label: __l("Alt ekstremiteler (36%)","Lower limbs (36%)"), w:36},
+      {id:"sc_g", label: __l("Genital bölge (1%)","Genitals (1%)"), w:1},
+    ],
+    signs: [
+      {id:"i_ery", label: __l("Eritem","Erythema")},
+      {id:"i_edm", label: __l("Ödem/ Papül","Edema/ Papulation")},
+      {id:"i_exo", label: __l("Ekskoriasyon","Excoriations")},
+      {id:"i_lic", label: __l("Likenifikasyon","Lichenification")},
+      {id:"i_ooz", label: __l("Ağlama/ Krut","Oozing/ Crusts")},
+      {id:"i_dry", label: __l("Kuruluk (kserozis)","Dryness (xerosis)")},
+    ],
+    itch: __l("Kaşıntı (0–10)","Pruritus (0–10)"),
+    sleep: __l("Uyku kaybı (0–10)","Sleep loss (0–10)")
+  };
+
+  let h = `
+  <div class="card">
+    <div class="title">${L.title}</div>
+    <div class="small">${L.sumNote}</div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="region">A — ${L.rule}</div>
+      <div class="small" style="margin:6px 0">${L.extentHint}</div>
+      <div class="grid cols-2">
+        ${L.regions.map(r=>`
+          <div>
+            <label>${r.label}</label>
+            <input id="${r.id}" type="number" min="0" max="100" step="1" value="0" oninput="scoradUpdate()">
+          </div>
+        `).join('')}
+      </div>
+      <div class="pill ok" id="scABox" style="margin-top:10px">${L.A}: <span id="scAVal">0</span>%</div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="region">B — ${L.intens}</div>
+      <div class="grid cols-2" style="margin-top:6px">
+        ${L.signs.map(s=>`
+          <div>
+            <label>${s.label} (0–3)</label>
+            <select id="${s.id}" onchange="scoradUpdate()">
+              <option>0</option><option>1</option><option>2</option><option>3</option>
+            </select>
+          </div>
+        `).join('')}
+      </div>
+      <div class="pill ok" id="scBBox" style="margin-top:10px">${L.B}: <span id="scBVal">0</span></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="region">C — ${L.subj}</div>
+      <div class="grid cols-2" style="margin-top:6px">
+        <div>
+          <label>${L.itch}</label>
+          <input id="sc_itch" type="number" min="0" max="10" step="1" value="0" oninput="scoradUpdate()">
+        </div>
+        <div>
+          <label>${L.sleep}</label>
+          <input id="sc_sleep" type="number" min="0" max="10" step="1" value="0" oninput="scoradUpdate()">
+        </div>
+      </div>
+      <div class="pill ok" id="scCBox" style="margin-top:10px">${L.C}: <span id="scCVal">0</span></div>
+    </div>
+
+    <div class="score" id="scoradScore">0.00</div>
+    <div id="scBand" class="pill ok">${__l("Yorum","Interpretation")}: ${L.bands.m}</div>
+  </div>`;
+
+  document.getElementById("content").innerHTML = h;
+  scoradUpdate(); // ilk hesap
+}
+
+function scoradUpdate(){
+  // A: Rule-of-Nines ile toplam %
+  const R = [
+    {id:"sc_h", w:9}, {id:"sc_u", w:18}, {id:"sc_t", w:36}, {id:"sc_l", w:36}, {id:"sc_g", w:1}
+  ];
+  let A = 0;
+  R.forEach(r=>{
+    const v = clamp(+val(r.id),0,100);
+    A += (r.w * v) / 100;
+  });
+  A = clamp(A,0,100);
+
+  // B: 6 bulgu toplamı (0–18)
+  const B = ["i_ery","i_edm","i_exo","i_lic","i_ooz","i_dry"]
+              .map(id=>+val(id)).reduce((a,b)=>a+b,0);
+
+  // C: Kaşıntı + Uyku kaybı (0–20)
+  const C = clamp(+val("sc_itch"),0,10) + clamp(+val("sc_sleep"),0,10);
+
+  // Toplam
+  const total = (A/5) + (7*B)/2 + C;
+
+  // UI güncelle
+  byId("scAVal").textContent = A.toFixed(1);
+  byId("scBVal").textContent = B;
+  byId("scCVal").textContent = C;
+  byId("scoradScore").textContent = total.toFixed(2);
+
+  // Bant rengi
+  const L = {m: __l("Hafif","Mild"), o: __l("Orta","Moderate"), s: __l("Şiddetli","Severe")};
+  const band = total < 25 ? ["ok", L.m] : (total <= 50 ? ["warn", L.o] : ["bad", L.s]);
+  const el = byId("scBand"); el.className = "pill " + band[0]; el.textContent = __l("Yorum","Interpretation") + ": " + band[1];
+
+  // A/B/C pill tonlaması (kozmetik)
+  tone("scABox", A, [25,50]); // aynı eşikler
+  tone("scBBox", B, [6,12]);  // B için sezgisel eşik
+  tone("scCBox", C, [7,14]);  // C için sezgisel eşik
+}
+
+/* ---- küçük yardımcılar ---- */
+function byId(id){ return document.getElementById(id); }
+function val(id){ const el = byId(id); return el ? el.value : 0; }
+function clamp(x,min,max){ return Math.max(min, Math.min(max, x)); }
+function tone(id, v, [t1,t2]){
+  const el = byId(id); if(!el) return;
+  el.classList.remove("ok","warn","bad");
+  el.classList.add(v < t1 ? "ok" : (v <= t2 ? "warn" : "bad"));
+}
+</script>
+
+<script>
+/* ===== UAS7 (Haftalık, 0–42) — 7 gün ayrı ayrı ===== */
+function _t(tr,en){ return (typeof lang!=='undefined' && lang==='tr') ? tr : en; }
+
+function viewUAS7(){
+  const L = {
+    title: "UAS7",
+    h: _t("Kabarcık (Hives)","Hives"),
+    p: _t("Kaşıntı","Itch"),
+    tip: _t("Her gün için 0–3 arası puanlayın; toplam (0–42) otomatik hesaplanır.",
+            "Score 0–3 for each day; total (0–42) is auto-calculated."),
+    days: (lang==='tr'
+      ? ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"]
+      : ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]),
+    range: _t("Aralık: 0–42","Range: 0–42"),
+    bands: {
+      wc: _t("İyi kontrol","Well-controlled"),
+      mi: _t("Hafif","Mild"),
+      mo: _t("Orta","Moderate"),
+      se: _t("Şiddetli","Severe")
+    }
+  };
+
+  // kart
+  let h = `<div class="card">
+    <div class="title">${L.title}</div>
+    <div class="small" style="margin-bottom:6px">${L.tip}</div>
+    <div class="grid cols-2">`;
+
+  // 7 gün: her gün için iki select (hives/itch)
+  for(let i=1;i<=7;i++){
+    h += `<div class="card">
+      <div class="region">${L.days[i-1]}</div>
+      ${sf("uH"+i, L.h, [0,1,2,3], "uas7Update")}
+      ${sf("uP"+i, L.p, [0,1,2,3], "uas7Update")}
+    </div>`;
+  }
+  h += `</div>
+    <div class="score" id="uas7Score">0</div>
+    <div class="small" id="uas7Extra">${L.range}</div>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+      <button onclick="uas7Clear()" class="pill warn" style="cursor:pointer">${_t("Haftayı Temizle","Clear Week")}</button>
+    </div>
+  </div>`;
+
+  document.getElementById("content").innerHTML = h;
+  uas7Update();
+}
+
+function uas7Update(){
+  let total = 0;
+  for(let i=1;i<=7;i++){
+    const h = +document.getElementById("uH"+i).value || 0;
+    const p = +document.getElementById("uP"+i).value || 0;
+    total += (h + p); // her gün 0–6
+  }
+  // toplam 0–42
+  const avg = total/7; // günlük ortalama (0–6)
+  document.getElementById("uas7Score").textContent = total.toString();
+
+  // bantlar (sık kullanılan kategoriler)
+  // 0–6 iyi kontrol, 7–15 hafif, 16–27 orta, 28–42 şiddetli
+  let band, cls;
+  if(total <= 6){ band = _t("İyi kontrol","Well-controlled"); cls = "ok"; }
+  else if(total <= 15){ band = _t("Hafif","Mild"); cls = "ok"; }
+  else if(total <= 27){ band = _t("Orta","Moderate"); cls = "warn"; }
+  else { band = _t("Şiddetli","Severe"); cls = "bad"; }
+
+  const extra = document.getElementById("uas7Extra");
+  extra.innerHTML = `${_t("Aralık: 0–42","Range: 0–42")} • ${_t("Günlük ort.","Daily avg.")}: ${avg.toFixed(2)} • ${_t("Yorum","Interpretation")}: <span class="pill ${cls}" style="padding:3px 8px">${band}</span>`;
+}
+
+function uas7Clear(){
+  for(let i=1;i<=7;i++){
+    document.getElementById("uH"+i).value = 0;
+    document.getElementById("uP"+i).value = 0;
+  }
+  uas7Update();
+}
+</script>
+
+<!-- === Detaylı GAGS (Regional) eklentisi: Bunu </body> ETİKETİNDEN ÖNCE yapıştırın === -->
+<style>
+  .gags-detail-card{border:1px solid rgba(120,120,120,.25);border-radius:14px;padding:16px;margin-top:16px;background:rgba(255,255,255,0.02)}
+  .gags-detail-title{display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:8px}
+  .gags-detail-grid{display:grid;grid-template-columns:1.2fr .9fr 1fr;gap:8px;align-items:center}
+  .gags-detail-grid>div{display:contents}
+  .gags-detail-grid label{opacity:.9}
+  .gags-detail-select, .gags-detail-output{
+    width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(125,125,125,.3);
+    background:transparent;color:inherit;outline:none
+  }
+  .gags-detail-foot{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px}
+  .gags-chip{padding:6px 10px;border-radius:999px;border:1px solid rgba(125,125,125,.3)}
+  .gags-badge{font-weight:800;font-size:20px}
+  .gags-floating-btn{
+    position:fixed;right:18px;bottom:18px;z-index:9999;border:none;border-radius:999px;padding:10px 14px;
+    box-shadow:0 6px 24px rgba(0,0,0,.25);cursor:pointer;background:#1f6feb;color:#fff
+  }
+  .gags-floating-panel{
+    position:fixed;right:18px;bottom:66px;z-index:9998;max-width:420px;display:none
+  }
+  .gags-light .gags-detail-card{background:rgba(0,0,0,0.02)}
+  @media (max-width:560px){ .gags-detail-grid{grid-template-columns:1fr 1fr 1fr} }
+</style>
+
+<script>
+(function(){
+  // Bölge/faktör tanımı
+  const REGIONS = [
+    {key:'forehead', name:'Alın', factor:2},
+    {key:'rc', name:'Sağ Yanak', factor:2},
+    {key:'lc', name:'Sol Yanak', factor:2},
+    {key:'nose', name:'Burun', factor:1},
+    {key:'chin', name:'Çene', factor:1},
+    {key:'chestback', name:'Göğüs/Sırt', factor:3},
+  ];
+  const SEVERITY = (total)=>{
+    if(total<=0) return '0: lezyon yok';
+    if(total<=18) return 'Hafif (1–18)';
+    if(total<=30) return 'Orta (19–30)';
+    if(total<=38) return 'Şiddetli (31–38)';
+    return 'Çok şiddetli (≥39)';
+  };
+  const OPTIONS = [
+    {v:0, t:'0 — Yok'},
+    {v:1, t:'1 — Komedon'},
+    {v:2, t:'2 — Papül'},
+    {v:3, t:'3 — Püstül'},
+    {v:4, t:'4 — Nodül'},
+  ];
+
+  // Var olan GAGS kartını bulmaya çalış (başlıkta "GAGS" geçen bir panel)
+  function findGagsCard(){
+    const nodes = Array.from(document.querySelectorAll('div,section,article'));
+    // bir kart içinde "GAGS" başlığı ve Comedones/Papules alanları ipucu olsun
+    return nodes.find(n=>{
+      const txt = (n.innerText||'').toLowerCase();
+      return txt.includes('gags') && (txt.includes('comedones') || txt.includes('komedon'));
+    });
+  }
+
+  function buildDetailUI(){
+    // kart
+    const wrap = document.createElement('div');
+    wrap.className = 'gags-detail-card';
+    wrap.id = 'gags-detailed';
+
+    const title = document.createElement('div');
+    title.className = 'gags-detail-title';
+    title.innerHTML = '<span>🧮</span><span>Detaylı GAGS (Regional, faktörlü)</span>';
+    wrap.appendChild(title);
+
+    // grid
+    const grid = document.createElement('div');
+    grid.className = 'gags-detail-grid';
+    wrap.appendChild(grid);
+
+    // header row
+    const h1 = document.createElement('label'); h1.textContent='Bölge';
+    const h2 = document.createElement('label'); h2.textContent='Bölge Faktörü';
+    const h3 = document.createElement('label'); h3.textContent='En Ağır Lezyon';
+    grid.append(h1,h2,h3);
+
+    // region rows
+    REGIONS.forEach(r=>{
+      const lab = document.createElement('label'); lab.textContent = r.name;
+      const fac = document.createElement('div'); fac.className='gags-chip'; fac.textContent = '× '+r.factor;
+      const sel = document.createElement('select'); sel.className='gags-detail-select'; sel.name='gags_'+r.key;
+      OPTIONS.forEach(o=>{
+        const op = document.createElement('option');
+        op.value=o.v; op.textContent=o.t; sel.appendChild(op);
+      });
+      sel.addEventListener('change', calc);
+      grid.append(lab,fac,sel);
+    });
+
+    // footer
+    const foot = document.createElement('div');
+    foot.className = 'gags-detail-foot';
+
+    const outTotal = document.createElement('span');
+    outTotal.className = 'gags-chip gags-badge';
+    outTotal.id = 'gags-d-total';
+    outTotal.textContent = 'Toplam: 0';
+
+    const outSeverity = document.createElement('span');
+    outSeverity.className = 'gags-chip';
+    outSeverity.id = 'gags-d-sev';
+    outSeverity.textContent = 'Şiddet: 0: lezyon yok';
+
+    // kısa formül bilgi
+    const info = document.createElement('span');
+    info.className='gags-chip';
+    info.title='Her bölge için en ağır lezyonun derecesi (0–4) bölge faktörüyle çarpılır ve hepsi toplanır.';
+    info.textContent='Formül: Bölge Faktörü × En Ağır Lezyon, hepsi toplanır';
+
+    foot.append(outTotal,outSeverity,info);
+    wrap.appendChild(foot);
+
+    function calc(){
+      let total = 0;
+      REGIONS.forEach(r=>{
+        const val = parseInt((wrap.querySelector('select[name="gags_'+r.key+'"]')||{value:0}).value,10)||0;
+        total += r.factor * val;
+      });
+      outTotal.textContent = 'Toplam: ' + total;
+      outSeverity.textContent = 'Şiddet: ' + SEVERITY(total);
+    }
+
+    return wrap;
+  }
+
+  // Ekleme stratejisi: önce GAGS kartının altına koy; bulunamazsa sağ altta yüzen panel yap
+  const host = findGagsCard();
+  const ui = buildDetailUI();
+
+  if(host){
+    // mevcut GAGS kartının içine/altına ekle
+    host.appendChild(ui);
+  } else {
+    // yüzen buton + panel
+    const btn = document.createElement('button');
+    btn.className='gags-floating-btn';
+    btn.textContent='Detaylı GAGS';
+    const panel = document.createElement('div');
+    panel.className='gags-floating-panel';
+    panel.appendChild(ui);
+    document.body.appendChild(btn);
+    document.body.appendChild(panel);
+    let open=false;
+    btn.addEventListener('click', ()=>{
+      open=!open;
+      panel.style.display = open ? 'block' : 'none';
+    });
+  }
+
+  // Tema uyumu (ışık/karanlık sınıfı kullanıyorsanız opsiyonel)
+  if(document.body && document.body.classList && document.body.classList.contains('light')){
+    document.querySelectorAll('#gags-detailed, .gags-floating-panel').forEach(el=>el.classList.add('gags-light'));
+  }
+})();
+</script>
+<!-- === /Detaylı GAGS eklentisi === -->
+
+<!-- ====== UI UPGRADE PACK: IGA, DLQI, IHS4, POEM, PDAI, BPDAI (sona ekle) ====== -->
+<style>
+  .table-card{padding:0;overflow:hidden}
+  .table{width:100%;border-collapse:collapse}
+  .table th,.table td{border-top:1px solid rgba(255,255,255,.12);padding:10px 12px;text-align:left}
+  .table th{font-weight:800;background:rgba(255,255,255,.04)}
+  body.light .table th{background:rgba(0,0,0,.04)}
+  .hint{opacity:.75;font-size:.85rem}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  .legend span{border:1px solid rgba(255,255,255,.2);padding:4px 8px;border-radius:999px}
+</style>
+
+<script>
+(function(){
+  const tr = (a,b)=> (typeof lang!=='undefined' && lang==='tr') ? a : b;
+
+  /* ---------- IGA (override) ---------- */
+  const _oldIGA = window.viewIGA;
+  window.viewIGA = function(){
+    const L = {
+      title: "IGA",
+      label: tr("Global Değerlendirme (IGA)","Investigator’s Global Assessment"),
+      opts: [
+        {v:0, t: tr("0 — Temiz","0 — Clear")},
+        {v:1, t: tr("1 — Neredeyse temiz (minimal)","1 — Almost clear (minimal)")},
+        {v:2, t: tr("2 — Hafif","2 — Mild")},
+        {v:3, t: tr("3 — Orta","3 — Moderate")},
+        {v:4, t: tr("4 — Ağır","4 — Severe")}
+      ]
+    };
+    content.innerHTML = `
+      <div class="card">
+        <div class="title">${L.title}</div>
+        <div class="small">${L.label}</div>
+        <label>${tr("Derece","Grade")}</label>
+        <select id="iga" onchange="igaUpdate()">
+          ${L.opts.map(o=>`<option value="${o.v}">${o.t}</option>`).join("")}
+        </select>
+        <div class="score" id="igaScore">0 — ${tr("Temiz","Clear")}</div>
+      </div>
+    `;
+    igaUpdate = function(){
+      const v = +document.getElementById('iga').value;
+      const text = L.opts.find(o=>+o.v===v)?.t.split('—')[1].trim() || '';
+      document.getElementById('igaScore').textContent = v + " — " + text;
+    };
+    igaUpdate();
+  };
+
+  /* ---------- DLQI (override) ---------- */
+  window.viewDLQI = function(){
+    const Q = [
+      tr("Cilt sorunu… son 1 haftada semptomlar (kaşıntı, ağrı, yanma)","Symptoms (itch, pain, stinging) in last week"),
+      tr("Günlük faaliyetler (alışveriş, ev işi)","Daily activities (shopping, housework)"),
+      tr("Giyinme","Clothing choices"),
+      tr("Sosyal/boş zaman aktiviteleri","Social/leisure activities"),
+      tr("Spor","Sports"),
+      tr("İş/okul","Work/School"),
+      tr("Kişilerle ilişkiler","Personal relationships"),
+      tr("Cinsel hayat","Sexual life"),
+      tr("Tedavi — zaman/yan etki/rahatsızlık","Treatment — time/side effects/inconvenience"),
+      tr("Genel olarak yaşam kalitesi","Overall QoL impact")
+    ];
+    const SCALE = [
+      tr("0: Hiç etkilemedi","0: Not at all"),
+      tr("1: Az etkiledi","1: A little"),
+      tr("2: Oldukça etkiledi","2: Quite a lot"),
+      tr("3: Çok fazla etkiledi","3: Very much")
+    ];
+    const bands = (s)=>{
+      if(s<=1)  return tr("Hiç/çok az etki","No/Small effect");
+      if(s<=5)  return tr("Küçük etki","Small effect");
+      if(s<=10) return tr("Orta etki","Moderate effect");
+      if(s<=20) return tr("Büyük etki","Very large effect");
+      return tr("Aşırı etki","Extremely large effect");
+    };
+
+    let h = `<div class="card table-card">
+      <div class="title">DLQI</div>
+      <div class="hint">${tr("Her satırı 0–3 puanlayın.","Score each item 0–3.")}</div>
+      <div class="legend">${SCALE.map(s=>`<span>${s}</span>`).join('')}</div>
+      <table class="table"><thead>
+        <tr><th style="width:60%">${tr("Soru","Item")}</th><th>${tr("Puan (0–3)","Score (0–3)")}</th></tr>
+      </thead><tbody>`;
+    Q.forEach((q,i)=>{
+      h += `<tr>
+        <td>${i+1}. ${q}</td>
+        <td><select id="d${i}" onchange="dlqiUpdate()"><option>0</option><option>1</option><option>2</option><option>3</option></select></td>
+      </tr>`;
+    });
+    h += `</tbody></table>
+      <div class="score" id="dlqiScore">0</div>
+      <div class="pill ok" id="dlqiBand">${tr("Yorum","Interpretation")}: ${bands(0)}</div>
+    </div>`;
+    content.innerHTML = h;
+
+    window.dlqiUpdate = function(){
+      let s=0; for(let i=0;i<10;i++) s+= +document.getElementById("d"+i).value;
+      document.getElementById("dlqiScore").textContent = s;
+      const txt = bands(s);
+      const el = document.getElementById("dlqiBand");
+      el.textContent = `${tr("Yorum","Interpretation")}: ${txt}`;
+      el.className = "pill " + (s<=5? "ok" : s<=10? "warn":"bad");
+    };
+    dlqiUpdate();
+  };
+
+  /* ---------- IHS4 (override labels only) ---------- */
+  window.viewIHS4 = function(){
+    const L = {
+      n: tr("Nodül sayısı","Number of nodules"),
+      a: tr("Abse sayısı","Number of abscesses"),
+      f: tr("Fistül/tünel sayısı","Number of fistulas/sinus tracts")
+    };
+    content.innerHTML = `<div class="card">
+      <div class="title">IHS4</div>
+      <label>${L.n}</label><input id="ihn" type="number" min="0" step="1" value="0" oninput="ihs4Update()">
+      <label>${L.a}</label><input id="iha" type="number" min="0" step="1" value="0" oninput="ihs4Update()">
+      <label>${L.f}</label><input id="ihf" type="number" min="0" step="1" value="0" oninput="ihs4Update()">
+      <div class="score" id="ihs4Score">0</div>
+      <div class="hint">Score = N + 2×A + 4×F</div>
+    </div>`;
+    window.ihs4Update = function(){
+      ihs4Score.textContent = (+ihn.value + 2*+iha.value + 4*+ihf.value);
+    };
+    ihs4Update();
+  };
+
+  /* ---------- POEM (full form, 7 items, 0–28) ---------- */
+  window.viewPOEM = function(){
+    const items = [
+      tr("Kaşıntı nedeniyle uykudan uyanma","Waking at night due to itching"),
+      tr("Kaşıntı şiddeti","Itch intensity"),
+      tr("Kanama","Bleeding"),
+      tr("Ağlama/akma","Weeping/oozing"),
+      tr("Kabuklanma","Cracking"),
+      tr("Kuruluk","Dryness"),
+      tr("İrritasyon (tahriş)","Irritation")
+    ];
+    const scale = [
+      tr("0 — Hiçbir gün","0 — No days"),
+      tr("1 — 1–2 gün","1 — 1–2 days"),
+      tr("2 — 3–4 gün","2 — 3–4 days"),
+      tr("3 — 5–6 gün","3 — 5–6 days"),
+      tr("4 — Her gün","4 — Every day")
+    ];
+    const band = (s)=>{
+      if(s<=2) return tr("Temiz/neredeyse temiz","Clear/almost clear");
+      if(s<=7) return tr("Hafif","Mild");
+      if(s<=16) return tr("Orta","Moderate");
+      if(s<=24) return tr("Şiddetli","Severe");
+      return tr("Çok şiddetli","Very severe");
+    };
+
+    let h = `<div class="card table-card">
+      <div class="title">POEM</div>
+      <div class="hint">${tr("Son 1 haftayı değerlendiriniz.","Assess the last 1 week.")}</div>
+      <div class="legend">${scale.map(s=>`<span>${s}</span>`).join('')}</div>
+      <table class="table"><thead>
+        <tr><th style="width:60%">${tr("Öğe","Item")}</th><th>${tr("Puan","Score")}</th></tr>
+      </thead><tbody>`;
+    items.forEach((q,i)=>{
+      h += `<tr>
+        <td>${i+1}. ${q}</td>
+        <td>
+          <select id="po${i}" onchange="poemUpdate()">
+            <option value="0">${scale[0]}</option>
+            <option value="1">${scale[1]}</option>
+            <option value="2">${scale[2]}</option>
+            <option value="3">${scale[3]}</option>
+            <option value="4">${scale[4]}</option>
+          </select>
+        </td>
+      </tr>`;
+    });
+    h += `</tbody></table>
+      <div class="score" id="poemScore">0</div>
+      <div class="pill ok" id="poemBand">${tr("Yorum","Interpretation")}: ${band(0)}</div>
+    </div>`;
+    content.innerHTML = h;
+
+    window.poemUpdate = function(){
+      let s=0; for(let i=0;i<7;i++) s+= +document.getElementById("po"+i).value;
+      document.getElementById("poemScore").textContent = s;
+      const el = document.getElementById("poemBand");
+      el.textContent = `${tr("Yorum","Interpretation")}: ${band(s)}`;
+      el.className = "pill " + (s<=7? "ok" : s<=16? "warn":"bad");
+    };
+    poemUpdate();
+  };
+
+  /* ---------- PDAI (table input) ---------- */
+  window.viewPDAI = function(){
+    const L = {
+      title:"PDAI",
+      skin: tr("Deri aktivitesi","Skin activity"),
+      scalp: tr("Saçlı deri","Scalp"),
+      muc: tr("Mukoza aktivitesi","Mucosal activity"),
+      dam: tr("Hasar (skar/hiperpig.)","Damage (scarring/hyperpig.)"),
+      hint: tr("Aralık önerileri parantez içinde verilmiştir.","Suggested ranges in parentheses.")
+    };
+    content.innerHTML = `
+      <div class="card table-card">
+        <div class="title">${L.title}</div>
+        <div class="hint">${L.hint}</div>
+        <table class="table">
+          <thead><tr><th>${tr("Bileşen","Component")}</th><th>${tr("Puan","Score")}</th><th>${tr("Not","Note")}</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>${L.skin}</td>
+              <td><input id="pd1" type="number" min="0" max="250" step="1" value="0" oninput="pdaiUpdate()"></td>
+              <td class="hint">${tr("0–250: erozyon/vezikül yaygınlığı","0–250: extent of erosions/blisters")}</td>
+            </tr>
+            <tr>
+              <td>${L.scalp}</td>
+              <td><input id="pd2" type="number" min="0" max="15" step="1" value="0" oninput="pdaiUpdate()"></td>
+              <td class="hint">${tr("0–15","0–15")}</td>
+            </tr>
+            <tr>
+              <td>${L.muc}</td>
+              <td><input id="pd3" type="number" min="0" max="120" step="1" value="0" oninput="pdaiUpdate()"></td>
+              <td class="hint">${tr("0–120: oral/genital/oküler vb.","0–120: oral/genital/ocular etc.")}</td>
+            </tr>
+            <tr>
+              <td>${L.dam}</td>
+              <td><input id="pd4" type="number" min="0" max="13" step="1" value="0" oninput="pdaiUpdate()"></td>
+              <td class="hint">${tr("0–13","0–13")}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="score" id="pdaiScore">0</div>
+      </div>
+    `;
+    window.pdaiUpdate = function(){
+      pdaiScore.textContent = (+pd1.value + +pd2.value + +pd3.value + +pd4.value);
+    };
+    pdaiUpdate();
+  };
+
+  /* ---------- BPDAI (table input) ---------- */
+  window.viewBPDAI = function(){
+    const L = {
+      title:"BPDAI",
+      skin: tr("Deri aktivitesi","Skin activity"),
+      muc: tr("Mukoza aktivitesi","Mucosal activity"),
+      pru: tr("Kaşıntı VAS (0–30)","Pruritus VAS (0–30)"),
+      hint: tr("Puanları tabloya giriniz.","Enter scores in the table.")
+    };
+    content.innerHTML = `
+      <div class="card table-card">
+        <div class="title">${L.title}</div>
+        <div class="hint">${L.hint}</div>
+        <table class="table">
+          <thead><tr><th>${tr("Bileşen","Component")}</th><th>${tr("Puan","Score")}</th><th>${tr("Not","Note")}</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>${L.skin}</td>
+              <td><input id="bp1" type="number" min="0" max="120" step="1" value="0" oninput="bpdaiUpdate()"></td>
+              <td class="hint">0–120</td>
+            </tr>
+            <tr>
+              <td>${L.muc}</td>
+              <td><input id="bp2" type="number" min="0" max="120" step="1" value="0" oninput="bpdaiUpdate()"></td>
+              <td class="hint">0–120</td>
+            </tr>
+            <tr>
+              <td>${L.pru}</td>
+              <td><input id="bp3" type="number" min="0" max="30" step="1" value="0" oninput="bpdaiUpdate()"></td>
+              <td class="hint">0–30</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="score" id="bpdaiScore">0</div>
+      </div>
+    `;
+    window.bpdaiUpdate = function(){
+      bpdaiScore.textContent = (+bp1.value + +bp2.value + +bp3.value);
+    };
+    bpdaiUpdate();
+  };
+
+})();
+</script>
+<!-- ====== /UI UPGRADE PACK ====== -->
+
+<!-- ==== GAGS OVERRIDE (regional) + floating cleanup — SONA EKLE ==== -->
+<style>
+  .gags-grid{display:grid;grid-template-columns:1.2fr .9fr 1fr;gap:10px;align-items:center;margin-top:8px}
+  .gags-grid .h{font-weight:700;opacity:.9}
+  .chip{padding:6px 10px;border:1px solid rgba(255,255,255,.25);border-radius:999px;display:inline-block}
+  @media(max-width:640px){ .gags-grid{grid-template-columns:1fr 1fr 1fr} }
+</style>
+<script>
+(function(){
+  // Sağ alttaki eski "Detaylı GAGS" popup'ını temizle
+  document.querySelectorAll('.gags-floating-btn,.gags-floating-panel').forEach(el=>el.remove());
+
+  // Bölge/faktör tanımı
+  const REGIONS = [
+    {key:'forehead', name: 'Alın',        factor:2},
+    {key:'rc',       name: 'Sağ yanak',   factor:2},
+    {key:'lc',       name: 'Sol yanak',   factor:2},
+    {key:'nose',     name: 'Burun',       factor:1},
+    {key:'chin',     name: 'Çene',        factor:1},
+    {key:'chestback',name: 'Göğüs/Sırt',  factor:3},
+  ];
+  const OPTIONS = [
+    {v:0, t:'0 — Yok'},
+    {v:1, t:'1 — Komedon'},
+    {v:2, t:'2 — Papül'},
+    {v:3, t:'3 — Püstül'},
+    {v:4, t:'4 — Nodül'},
+  ];
+  const SEVERITY = (total)=>{
+    if(total<=0) return {txt:'0: lezyon yok', cls:'ok'};
+    if(total<=18) return {txt:'Hafif (1–18)', cls:'ok'};
+    if(total<=30) return {txt:'Orta (19–30)', cls:'warn'};
+    if(total<=38) return {txt:'Şiddetli (31–38)', cls:'bad'};
+    return {txt:'Çok şiddetli (≥39)', cls:'bad'};
+  };
+
+  // GAGS sekmesini tamamen override et
+  window.viewGAGS = function(){
+    const lbl = (typeof lang!=='undefined' && lang==='tr')
+      ? {title:'GAGS', formula:'Formül: Bölge faktörü × En ağır lezyon (toplam)', interp:'Yorum'}
+      : {title:'GAGS', formula:'Formula: Region factor × Most severe lesion (sum)', interp:'Interpretation'};
+
+    // Kart iskeleti
+    let h = `<div class="card">
+      <div class="title">${lbl.title}</div>
+      <div class="small">${lbl.formula}</div>
+      <div class="gags-grid" id="gagsGrid">
+        <div class="h">${(lang==='tr'?'Bölge':'Region')}</div>
+        <div class="h">${(lang==='tr'?'Faktör':'Factor')}</div>
+        <div class="h">${(lang==='tr'?'En ağır lezyon':'Most severe lesion')}</div>
+    `;
+
+    // Satırlar
+    REGIONS.forEach(r=>{
+      h += `
+        <div>${r.name}</div>
+        <div><span class="chip">× ${r.factor}</span></div>
+        <div>
+          <select id="gsel_${r.key}" onchange="gagsUpdate()">
+            ${OPTIONS.map(o=>`<option value="${o.v}">${o.t}</option>`).join('')}
+          </select>
+        </div>
+      `;
+    });
+
+    h += `</div>
+      <div class="score" id="gagsScore">0</div>
+      <div class="pill ok" id="gagsBand">${lbl.interp}: 0: lezyon yok</div>
+    </div>`;
+
+    document.getElementById('content').innerHTML = h;
+    gagsUpdate();
+  };
+
+  // Hesaplayıcı
+  window.gagsUpdate = function(){
+    let total = 0;
+    REGIONS.forEach(r=>{
+      const v = parseInt(document.getElementById('gsel_'+r.key).value,10)||0;
+      total += r.factor * v;
+    });
+    const sev = SEVERITY(total);
+    const sEl = document.getElementById('gagsScore');
+    const bEl = document.getElementById('gagsBand');
+    if(sEl) sEl.textContent = total;
+    if(bEl){ bEl.textContent = ((lang==='tr')?'Yorum':'Interpretation')+': '+sev.txt; bEl.className = 'pill '+sev.cls; }
+  };
+
+  // Eğer şu an GAGS sekmesi açık ise yeniden çiz
+  try{
+    if(typeof active!=='undefined' && active==='GAGS'){
+      // bazı router’larda doğrudan çağırmak gerekebilir
+      window.viewGAGS();
+    }
+  }catch(e){}
+})();
+</script>
+<!-- ==== /GAGS OVERRIDE ==== -->
+
+<!-- ==== Chart growth fix (replace canvas, fixed height, clean destroy) ==== -->
+<style>
+  /* Canvas yüksekliği sabit, genişlik %100: resize döngüsü engellenir */
+  #scoreChart {
+    width: 100% !important;
+    height: 320px !important;   /* ihtiyaca göre 260–360 arası ayarlayabilirsin */
+    display: block;
+  }
+</style>
+<script>
+(function(){
+  const FIXED_H = 320; // px
+
+  // Mevcut openChart'ı override ediyoruz
+  const _ensureChartJS = window.ensureChartJS;
+  const _buildSeries   = window.buildSeries;
+
+  // Global chart referansı
+  window.scoreChart = window.scoreChart || null;
+
+  window.openChart = async function(){
+    await _ensureChartJS();
+
+    const modal = document.getElementById("chartModal");
+    const oldCanvas = document.getElementById("scoreChart");
+
+    // 1) Eski chart varsa güvenli şekilde yok et
+    if (window.scoreChart && typeof window.scoreChart.destroy === 'function') {
+      try { window.scoreChart.destroy(); } catch(e){}
+      window.scoreChart = null;
+    }
+
+    // 2) Canvas'ı tamamen tazeleyelim (Chart.js'in inline stil kalıntılarını temizler)
+    const parent = oldCanvas.parentNode;
+    parent.innerHTML = `<canvas id="scoreChart" height="${FIXED_H}"></canvas>`;
+    const canvas = document.getElementById("scoreChart");
+    canvas.style.height = FIXED_H + "px"; // CSS de sabitli ama garanti için
+
+    // 3) Veriyi kur
+    const d = _buildSeries();
+
+    // 4) Yeni chart
+    const ctx = canvas.getContext("2d");
+    window.scoreChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: d.labels,
+        datasets: [{
+          label: d.score,
+          data: d.values,
+          tension: 0.25,
+          pointRadius: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false, // yüksekliği biz veriyoruz
+        animation: { duration: 400 }, // istersen 0 yapabilirsin
+        resizeDelay: 0,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { autoSkip: true, maxTicksLimit: 6 } },
+          y: { beginAtZero: true }
+        }
+      }
+    });
+
+    // 5) Modalı göster
+    modal.style.display = "flex";
+  };
+
+  // Pencere yeniden boyutlanınca sadece mevcut grafiği yeniden boyutlandır
+  window.addEventListener('resize', () => {
+    if (window.scoreChart) { try { window.scoreChart.resize(); } catch(e){} }
+  });
+
+  // Modal kapatılırken de grafik animasyonlarını kesmek için destroy etme opsiyonu:
+  const closeBtn = document.getElementById("closeChart");
+  if (closeBtn) {
+    const close = () => {
+      const modal = document.getElementById("chartModal");
+      modal.style.display = "none";
+      if (window.scoreChart) { try { window.scoreChart.destroy(); } catch(e){} window.scoreChart = null; }
+    };
+    closeBtn.onclick = close;
+    // arka plana tıklayınca kapanıyorsa onu da güncelle
+    const backdrop = document.getElementById("chartModal");
+    if (backdrop) backdrop.onclick = (e)=>{ if(e.target.id==="chartModal") close(); };
+  }
+})();
+</script>
+<!-- ==== /Chart growth fix ==== -->
+
+<!-- ==== Final Score Explanations + DLQI & BPDAI UI Fix ==== -->
+<style>
+  .table td input, .table td select { width: 100%; box-sizing: border-box; text-align: center; }
+  .table td { vertical-align: middle; }
+  .explain {
+    font-size: .9rem;
+    opacity: .75;
+    margin: 4px 0 10px 0;
+    line-height: 1.4;
+  }
+</style>
+<script>
+(function(){
+  const addExplain = (id, textTr, textEn) => {
+    const langTr = (typeof lang!=='undefined' && lang==='tr');
+    const text = langTr ? textTr : textEn;
+    const card = document.querySelector(`#content .card`);
+    if(card && !card.querySelector('.explain')){
+      const p = document.createElement('div');
+      p.className = 'explain';
+      p.textContent = text;
+      card.insertBefore(p, card.children[1] || null);
+    }
+  };
+
+  // --- GAGS açıklama ---
+  const oldGAGS = window.viewGAGS;
+  window.viewGAGS = function(){
+    oldGAGS();
+    addExplain('gags', 
+      'Global Acne Grading System (GAGS), akne şiddetini bölgesel lezyon yoğunluğu ve tipine göre değerlendirir. Toplam puan arttıkça akne şiddeti artar.',
+      'GAGS evaluates acne severity based on lesion type and regional distribution. Higher total means more severe acne.');
+  };
+
+  // --- IGA ---
+  const oldIGA = window.viewIGA;
+  if(oldIGA) window.viewIGA = function(){
+    oldIGA();
+    addExplain('iga', 
+      'IGA (Investigator’s Global Assessment), hastalığın genel klinik görünümüne göre 0–4 arasında değerlendirme yapar.',
+      'IGA rates the overall clinical severity from 0 (clear) to 4 (severe).');
+  };
+
+  // --- DLQI ---
+  const oldDLQI = window.viewDLQI;
+  if(oldDLQI) window.viewDLQI = function(){
+    oldDLQI();
+    addExplain('dlqi',
+      'DLQI (Dermatology Life Quality Index), deri hastalığının yaşam kalitesine etkisini ölçer. Toplam 0–30 arasıdır, yüksek puan daha fazla etkiyi gösterir.',
+      'DLQI assesses the impact of skin disease on quality of life (0–30; higher = worse).');
+    // tablo hizalamasını düzelt
+    document.querySelectorAll('#content table.table td').forEach(td=> td.style.textAlign='center');
+  };
+
+  // --- IHS4 ---
+  const oldIHS4 = window.viewIHS4;
+  if(oldIHS4) window.viewIHS4 = function(){
+    oldIHS4();
+    addExplain('ihs4',
+      'IHS4 (International Hidradenitis Suppurativa Severity Score System), nodül, abse ve fistül sayılarına göre HS şiddetini ölçer.',
+      'IHS4 evaluates HS severity using counts of nodules, abscesses, and fistulas.');
+  };
+
+  // --- POEM ---
+  const oldPOEM = window.viewPOEM;
+  if(oldPOEM) window.viewPOEM = function(){
+    oldPOEM();
+    addExplain('poem',
+      'POEM, atopik dermatit semptomlarının son 1 haftadaki sıklığını değerlendirir. 0–28 puan arasıdır.',
+      'POEM measures atopic dermatitis symptom frequency over the last week (0–28).');
+  };
+
+  // --- PDAI ---
+  const oldPDAI = window.viewPDAI;
+  if(oldPDAI) window.viewPDAI = function(){
+    oldPDAI();
+    addExplain('pdai',
+      'PDAI (Pemphigus Disease Area Index), pemfigus hastalarında deri ve mukozal aktiviteyi değerlendirir. Yüksek puan daha geniş aktiviteyi gösterir.',
+      'PDAI evaluates skin and mucosal disease activity in pemphigus. Higher = more active disease.');
+    document.querySelectorAll('#content table.table td').forEach(td=> td.style.textAlign='center');
+  };
+
+  // --- BPDAI ---
+  const oldBPDAI = window.viewBPDAI;
+  if(oldBPDAI) window.viewBPDAI = function(){
+    oldBPDAI();
+    addExplain('bpdai',
+      'BPDAI (Bullous Pemphigoid Disease Area Index), büllöz pemfigoidte deri, mukoza ve kaşıntı şiddetini ölçer. Toplam ne kadar yüksekse hastalık o kadar aktiftir.',
+      'BPDAI assesses skin, mucosal, and pruritus activity in bullous pemphigoid. Higher total indicates more severe disease.');
+    // hizalama düzeltmesi
+    document.querySelectorAll('#content table.table td').forEach(td=> td.style.textAlign='center');
+  };
+
+})();
+</script>
+<!-- ==== /Final Score Explanations + UI Fix ==== -->
+
+<!-- ==== SALT Explanation Addition ==== -->
+<script>
+(function(){
+  const addExplain = (textTr, textEn)=>{
+    const card = document.querySelector('#content .card');
+    if(card && !card.querySelector('.explain')){
+      const p = document.createElement('div');
+      p.className = 'explain';
+      p.style.fontSize = '.9rem';
+      p.style.opacity = '.75';
+      p.style.margin = '4px 0 10px 0';
+      p.style.lineHeight = '1.4';
+      const langTr = (typeof lang!=='undefined' && lang==='tr');
+      p.textContent = langTr ? textTr : textEn;
+      card.insertBefore(p, card.children[1] || null);
+    }
+  };
+
+  const oldSALT = window.viewSALT;
+  if(oldSALT) window.viewSALT = function(){
+    oldSALT();
+    addExplain(
+      "SALT (Severity of Alopecia Tool), alopesi areatada saç dökülmesinin yüzdesini değerlendirir. \
+Her bölge (ön, tepe, yan, arka) saçsız alan yüzdesiyle ayrı ayrı girilir, toplam oran otomatik hesaplanır. \
+Değerler yüzde (%) olarak girilmelidir.",
+      "SALT (Severity of Alopecia Tool) quantifies the percentage of scalp hair loss in alopecia areata. \
+Enter hair loss percentages for each region (frontal, vertex, temporal, occipital); the total score is automatically calculated."
+    );
+  };
+})();
+</script>
+<!-- ==== /SALT Explanation Addition ==== -->
+
+<!-- ==== Score Max Ranges (all calculators) + minor align fix ==== -->
+<style>
+  .range-line{font-size:.9rem;opacity:.75;margin:6px 0 4px 0}
+</style>
+<script>
+(function(){
+  const isTR = ()=> (typeof lang!=='undefined' && lang==='tr');
+  const txt = (tr,en)=> isTR()?tr:en;
+
+  function addRangeLine(rangeText){
+    const card = document.querySelector('#content .card');
+    if(!card) return;
+    // Aynı kartta birden çok eklemeyi önle
+    if(card.querySelector('.range-line')) return;
+    const div = document.createElement('div');
+    div.className = 'range-line';
+    div.textContent = rangeText;
+    // Başlığın hemen altına koy
+    const titleEl = card.querySelector('.title');
+    if(titleEl && titleEl.nextSibling){
+      card.insertBefore(div, titleEl.nextSibling);
+    } else {
+      card.insertBefore(div, card.firstChild);
+    }
+  }
+
+  /* ---------- PASI (0–72) ---------- */
+  const _viewPASI = window.viewPASI;
+  if(_viewPASI) window.viewPASI = function(){
+    _viewPASI();
+    addRangeLine(txt('Aralık: 0–72 (maksimum 72)','Range: 0–72 (max 72)'));
+  };
+
+  /* ---------- EASI (0–72) ---------- */
+  const _viewEASI = window.viewEASI;
+  if(_viewEASI) window.viewEASI = function(){
+    _viewEASI();
+    // bazı versiyonlarda zaten yazıyor; yine de ek çizgi olarak bırakıyoruz (tekilleştirme var)
+    addRangeLine(txt('Aralık: 0–72 (maksimum 72)','Range: 0–72 (max 72)'));
+  };
+
+  /* ---------- VASI (0–24; bu uygulama kurulumu) ---------- */
+  const _viewVASI = window.viewVASI;
+  if(_viewVASI) window.viewVASI = function(){
+    _viewVASI();
+    // Bizde 4 bölge × (HU 0–6 × %/100). Max = 6×1×4 = 24
+    addRangeLine(txt('Aralık: 0–24 (bu kurulumda en yüksek 24)','Range: 0–24 (in this setup max 24)'));
+  };
+
+  /* ---------- SCORAD (0–103) ---------- */
+  const _viewSCORAD = window.viewSCORAD;
+  if(_viewSCORAD) window.viewSCORAD = function(){
+    _viewSCORAD();
+    // A/5 (A max 100 → 20) + 7*B/2 (B max 18 → 63) + C (max 20) = 103
+    addRangeLine(txt('Aralık: 0–103 (maksimum 103)','Range: 0–103 (max 103)'));
+  };
+
+  /* ---------- UAS7 (0–42) ---------- */
+  const _viewUAS7 = window.viewUAS7;
+  if(_viewUAS7) window.viewUAS7 = function(){
+    _viewUAS7();
+    addRangeLine(txt('Aralık: 0–42 (maksimum 42)','Range: 0–42 (max 42)'));
+  };
+
+  /* ---------- GAGS (0–44; faktörlere göre) ---------- */
+  const _viewGAGS = window.viewGAGS;
+  if(_viewGAGS) window.viewGAGS = function(){
+    _viewGAGS();
+    // Ekranda görünen regional GAGS varsayılan faktörleri: 2,2,2,1,1,3 → 4 ile çarpılıp toplanır = 44
+    // Daha genel yapmak için DOM’daki factor chip’lerinden hesaplayalım:
+    let maxTotal = 0;
+    document.querySelectorAll('#content .chip').forEach(ch=>{
+      const m = (ch.textContent||'').match(/×\s*(\d+)/);
+      if(m){ maxTotal += 4*parseInt(m[1],10); }
+    });
+    if(!maxTotal) maxTotal = 44;
+    addRangeLine(txt(`Aralık: 0–${maxTotal} (maksimum ${maxTotal})`,`Range: 0–${maxTotal} (max ${maxTotal})`));
+  };
+
+  /* ---------- Hurley (I–III; max III) ---------- */
+  const _viewHurley = window.viewHurley;
+  if(_viewHurley) window.viewHurley = function(){
+    _viewHurley();
+    addRangeLine(txt('Evreler: I–III (en yüksek III)','Stages: I–III (max III)'));
+  };
+
+  /* ---------- IGA (0–4) ---------- */
+  const _viewIGA = window.viewIGA;
+  if(_viewIGA) window.viewIGA = function(){
+    _viewIGA();
+    addRangeLine(txt('Aralık: 0–4 (maksimum 4)','Range: 0–4 (max 4)'));
+  };
+
+  /* ---------- DLQI (0–30) + ortalama hizalama ---------- */
+  const _viewDLQI = window.viewDLQI;
+  if(_viewDLQI) window.viewDLQI = function(){
+    _viewDLQI();
+    addRangeLine(txt('Aralık: 0–30 (maksimum 30; yüksek puan daha fazla etki)','Range: 0–30 (max 30; higher = worse)'));
+    // Skor hücrelerini ortala (sola yapışmayı önle)
+    document.querySelectorAll('#content table.table td').forEach(td=> td.style.textAlign='center');
+  };
+
+  /* ---------- IHS4 (sabit maksimum yok; kategori bilgi) ---------- */
+  const _viewIHS4 = window.viewIHS4;
+  if(_viewIHS4) window.viewIHS4 = function(){
+    _viewIHS4();
+    const t = txt(
+      'Sabit bir maksimum yoktur. Sık kullanılan eşikler: ≤3 hafif, 4–10 orta, ≥11 şiddetli.',
+      'No fixed maximum. Common cutoffs: ≤3 mild, 4–10 moderate, ≥11 severe.'
+    );
+    addRangeLine(t);
+  };
+
+  /* ---------- SALT (0–100) ---------- */
+  const _viewSALT = window.viewSALT;
+  if(_viewSALT) window.viewSALT = function(){
+    _viewSALT();
+    addRangeLine(txt('Aralık: 0–100 (maksimum 100; tam saçsızlık)','Range: 0–100 (max 100; complete hair loss)'));
+  };
+
+  /* ---------- POEM (0–28) ---------- */
+  const _viewPOEM = window.viewPOEM;
+  if(_viewPOEM) window.viewPOEM = function(){
+    _viewPOEM();
+    addRangeLine(txt('Aralık: 0–28 (maksimum 28)','Range: 0–28 (max 28)'));
+  };
+
+  /* ---------- PDAI (max mevcut alanların toplamından) ---------- */
+  const _viewPDAI = window.viewPDAI;
+  if(_viewPDAI) window.viewPDAI = function(){
+    _viewPDAI();
+    // DOM’daki input max’larını toplayalım
+    let maxSum = 0;
+    ['pd1','pd2','pd3','pd4'].forEach(id=>{
+      const el = document.getElementById(id);
+      maxSum += el && el.max ? (+el.max||0) : 0;
+    });
+    if(!maxSum) maxSum = 398; // 250 + 15 + 120 + 13
+    addRangeLine(txt(`Aralık: 0–${maxSum} (maksimum ${maxSum})`,`Range: 0–${maxSum} (max ${maxSum})`));
+    // tablo hizalaması
+    document.querySelectorAll('#content table.table td').forEach(td=> td.style.textAlign='center');
+  };
+
+  /* ---------- BPDAI (max mevcut alanların toplamından) ---------- */
+  const _viewBPDAI = window.viewBPDAI;
+  if(_viewBPDAI) window.viewBPDAI = function(){
+    _viewBPDAI();
+    let maxSum = 0;
+    ['bp1','bp2','bp3'].forEach(id=>{
+      const el = document.getElementById(id);
+      maxSum += el && el.max ? (+el.max||0) : 0;
+    });
+    if(!maxSum) maxSum = 270; // 120 + 120 + 30
+    addRangeLine(txt(`Aralık: 0–${maxSum} (maksimum ${maxSum})`,`Range: 0–${maxSum} (max ${maxSum})`));
+    // hizalama
+    document.querySelectorAll('#content table.table td').forEach(td=> td.style.textAlign='center');
+  };
+
+})();
+</script>
+<!-- ==== /Score Max Ranges ==== -->
+
+<!-- ===== VASI override: HU serbest sayı girişi + doğru bölge maksimumları + açıklama/arayüz ===== -->
+<script>
+(function(){
+  // Bölge/BSA temelli HU üst sınırları
+  const REGIONS = [
+    ['h', () => (typeof T!=='undefined' && T[lang]?.r?.h) || 'Head/Neck', 9],
+    ['u', () => (typeof T!=='undefined' && T[lang]?.r?.u) || 'Upper limbs', 18],
+    ['t', () => (typeof T!=='undefined' && T[lang]?.r?.t) || 'Trunk', 36],
+    ['l', () => (typeof T!=='undefined' && T[lang]?.r?.l) || 'Lower limbs', 36],
+  ];
+  const DP_OPTS = [0,10,25,50,75,90,100];
+
+  function __(tr,en){ return (typeof lang!=='undefined' && lang==='tr') ? tr : en; }
+
+  // Eski viewVASI'yı override et
+  window.viewVASI = function(){
+    const HU_LAB = __( 'El birimi (HU) — bir el avucu ≈ %1 BSA', 'Hand units (HU) — one palm ≈ 1% BSA' );
+    const DP_LAB = __( 'Depigmentasyon %', 'Depigmentation %' );
+    const EXPL   = __( 
+      'SALT değil, VASI: Vitiligo’da bölge bazında saç/deri değil, lezyon alanını HU (el birimi) ile ve depigmentasyon yüzdesiyle çarpıp toplar.',
+      'VASI in vitiligo: For each region, multiply lesion area in hand units by depigmentation %, then sum.'
+    );
+    const RANGE  = __( 'Aralık: 0–99 (max 99; HU sınırları: Baş/9, Üst/18, Gövde/36, Alt/36)', 
+                       'Range: 0–99 (max 99; HU caps: Head/9, Upper/18, Trunk/36, Lower/36)' );
+
+    let h = `<div class="card">
+      <div class="title">VASI</div>
+      <div class="range-line" style="font-size:.9rem;opacity:.75;margin:6px 0 4px 0">${RANGE}</div>
+      <div class="explain" style="font-size:.9rem;opacity:.75;line-height:1.4;margin:4px 0 10px 0">${EXPL}</div>
+      <div class="grid cols-2" style="margin-top:8px">`;
+
+    REGIONS.forEach(([k,getLabel,maxHU])=>{
+      const label = (typeof getLabel==='function' ? getLabel() : getLabel);
+      h += `<div class="card">
+        <div class="region">${label}</div>
+        <label>${HU_LAB} <span class="small" style="opacity:.7">(${__('Maks','Max')}: ${maxHU} HU)</span></label>
+        <input id="${k}hu" type="number" min="0" max="${maxHU}" step="0.5" value="0" oninput="vasiUpdate()">
+        <label>${DP_LAB}</label>
+        <select id="${k}dp" onchange="vasiUpdate()">
+          ${DP_OPTS.map(v=>`<option value="${v}">${v}</option>`).join('')}
+        </select>
+      </div>`;
+    });
+
+    h += `</div>
+      <div class="score" id="vasiScore">0.00</div>
+      <div class="small" style="opacity:.8">${__( 'Formül: Σ (HU × Depig.% / 100)',
+                                                  'Formula: Σ (HU × Depig.% / 100)' )}</div>
+    </div>`;
+
+    document.getElementById('content').innerHTML = h;
+    vasiUpdate();
+  };
+
+  // Güncelleme hesabı + güvenli sınırlandırma
+  window.vasiUpdate = function(){
+    const regs = ['h','u','t','l'];
+    const maxMap = {h:9, u:18, t:36, l:36};
+    const getNum = (id)=> {
+      const el = document.getElementById(id);
+      let v = parseFloat(el.value||'0');
+      if(!isFinite(v)) v = 0;
+      // clamp HU to region max
+      const isHU = /hu$/.test(id);
+      if(isHU){
+        const region = id[0]; // h/u/t/l
+        const mx = maxMap[region] || 36;
+        if(v < 0) v = 0;
+        if(v > mx) v = mx;
+        if(el.value != v) el.value = v; // görsel geri yaz
+      }else{
+        // dp zaten select, ama yine de emin olalım
+        if(v < 0) v = 0; if(v > 100) v = 100;
+      }
+      return v;
+    };
+
+    let total = 0;
+    regs.forEach(k=>{
+      const hu = getNum(k+'hu');   // 0 .. bölge max HU
+      const dp = getNum(k+'dp');   // 0..100
+      total += hu * (dp/100);
+    });
+
+    const out = document.getElementById('vasiScore');
+    if(out) out.textContent = total.toFixed(2);
+  };
+})();
+</script>
+<!-- ===== /VASI override ===== -->
+
+<!-- ==== RedrockMD signature ==== -->
+<style>
+  .signature {
+    text-align: center;
+    font-size: 12.5px;
+    opacity: 0.45;
+    margin: 28px 0 10px 0;
+    letter-spacing: 0.3px;
+    transition: opacity .3s ease;
+  }
+  .signature:hover {
+    opacity: 0.75;
+  }
+</style>
+
+<div class="signature">by RedrockMD</div>
+<!-- ==== /RedrockMD signature ==== -->
+
+<!-- ==== Gentle Background Pattern + RedrockMD Signature ==== -->
+<style>
+  /* Arka plan deseni (SVG tabanlı, retina dostu, çok hafif kontrast) */
+  body {
+    background-color: #0D1117; /* koyu mod zemin */
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.04) 1px, transparent 0),
+      radial-gradient(circle at 3px 3px, rgba(255,255,255,0.02) 1px, transparent 0);
+    background-size: 32px 32px, 64px 64px;
+  }
+  body.light {
+    background-color: #F5F7FA; /* açık mod zemin */
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(0,0,0,0.05) 1px, transparent 0),
+      radial-gradient(circle at 3px 3px, rgba(0,0,0,0.03) 1px, transparent 0);
+  }
+
+  /* İmza stili */
+  .signature {
+    text-align: center;
+    font-size: 12.5px;
+    opacity: 0.45;
+    margin: 28px 0 10px 0;
+    letter-spacing: 0.35px;
+    transition: opacity .3s ease;
+    user-select: none;
+  }
+  .signature:hover {
+    opacity: 0.75;
+  }
+</style>
+
+<div class="signature">by RedrockMD</div>
+<!-- ==== /Gentle Background Pattern + Signature ==== -->
+
+<!-- ==== Title spacing fix for DLQI / POEM / PDAI / BPDAI ==== -->
+<style>
+  /* Başlık yazılarının kenarlara değmesini engelle */
+  #content .card .title {
+    padding-top: 6px !important;
+    padding-bottom: 4px !important;
+    margin-bottom: 6px !important;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+
+  /* Kart içeriğiyle kenar arasında biraz boşluk */
+  #content .card {
+    padding: 20px 20px 18px 20px !important;
+  }
+
+  /* Tablo başlık hücreleri ve kenarlık arası boşluk */
+  #content table.table th,
+  #content table.table td {
+    padding: 8px 10px !important;
+  }
+
+  /* Özellikle DLQI / POEM / PDAI / BPDAI başlıklarının altına nefes boşluğu */
+  .title:where(:contains("DLQI"), :contains("POEM"), :contains("PDAI"), :contains("BPDAI")) {
+    margin-top: 4px !important;
+  }
+</style>
+<!-- ==== /Title spacing fix ==== -->
+
+<!-- ==== Add icon next to DermaScores title ==== -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const headerTitle = document.querySelector("header div");
+  if(headerTitle && !headerTitle.querySelector(".logoIcon")){
+    const icon = document.createElement("span");
+    icon.className = "logoIcon";
+    icon.textContent = "🧬"; // alternatif: 🧴💧🩺🌿
+    icon.style.marginLeft = "8px";
+    icon.style.fontSize = "22px";
+    icon.style.verticalAlign = "middle";
+    icon.style.opacity = "0.8";
+    icon.style.transition = "opacity .3s ease";
+    icon.title = "Dermatology tools for clinical scoring";
+    icon.addEventListener("mouseenter", ()=> icon.style.opacity="1");
+    icon.addEventListener("mouseleave", ()=> icon.style.opacity="0.8");
+    headerTitle.appendChild(icon);
+  }
+});
+</script>
+<!-- ==== /Add icon ==== -->
+
+<!-- ====== PDAI & BPDAI — Detailed Regional Tables (override) ====== -->
+<style>
+  .table-card{padding:0;overflow:hidden}
+  .table{width:100%;border-collapse:collapse}
+  .table th,.table td{border-top:1px solid rgba(255,255,255,.12);padding:10px 12px;text-align:left}
+  .table th{font-weight:800;background:rgba(255,255,255,.04)}
+  body.light .table th{background:rgba(0,0,0,.04)}
+  .subhdr{font-weight:800;opacity:.9;background:rgba(255,255,255,.03)}
+  .hint{opacity:.75;font-size:.85rem}
+  .tight{padding:6px 10px !important}
+  .right{text-align:right}
+  .center{text-align:center}
+  .pillline{font-size:.9rem;opacity:.75;margin:6px 0 4px 0}
+  .kpi{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  .kpi .chip{border:1px solid rgba(255,255,255,.2);padding:4px 8px;border-radius:999px}
+  .sum{font-weight:800}
+</style>
+
+<script>
+(function(){
+  const tr = (a,b)=> (typeof lang!=='undefined' && lang==='tr') ? a : b;
+
+  /* =============== PDAI (Detailed) =============== */
+  window.viewPDAI = function(){
+    // RÖLATİF MAKSİMLER — toplamlar bu tavanlara clamp'lenir (klasik PDAI aralıkları ile uyumlu)
+    const MAX = { skin:250, scalp:15, muc:120, dam:13 };
+
+    // 12 ana cilt bölgesi (klasik alan ayrımı; skorlar 0–10 önerisi, ancak serbest giriş; toplam 250'ye clamp)
+    const SKIN_REGIONS = [
+      tr("Baş/Yüz","Head/Face"), tr("Boyun","Neck"), tr("Göğüs","Chest"),
+      tr("Karın","Abdomen"), tr("Sırt","Back"), tr("Kalça/Gluteal","Buttocks"),
+      tr("Sağ üst ekstremite","Right upper limb"), tr("Sol üst ekstremite","Left upper limb"),
+      tr("Sağ alt ekstremite","Right lower limb"), tr("Sol alt ekstremite","Left lower limb"),
+      tr("El ayası/ayak tabanı","Palms/Soles"), tr("Genital/perineal","Genital/Perineal")
+    ];
+
+    // Mukoza alt bölgeleri (örnek/klasik liste)
+    const MUC_REGIONS = [
+      tr("Oral bukkal","Oral buccal"), tr("Damak","Palate"), tr("Dudak","Lips"),
+      tr("Dil","Tongue"), tr("Gingiva","Gingiva"), tr("Farinks","Pharynx"),
+      tr("Burun","Nasal"), tr("Konjonktiva","Conjunctiva"),
+      tr("Larinks","Laryngeal"), tr("Özofagus","Esophageal"),
+      tr("Genital","Genital"), tr("Anorektal","Anorectal")
+    ];
+
+    // YARDIMCI
+    const row = (label, id, min=0, max=10)=>(
+      `<tr><td>${label}</td>
+        <td class="center"><input id="${id}" type="number" min="${min}" max="${max}" step="1" value="0" oninput="pdaiUpdate()"></td>
+        <td class="hint right">${min}–${max}</td></tr>`
+    );
+
+    let h = `
+    <div class="card table-card">
+      <div class="title">PDAI</div>
+      <div class="pillline">${tr("Aralık: 0–398 (maks 398) — toplamlar standart tavanlara otomatik sınırlandırılır.","Range: 0–398 (max 398) — totals are auto-clamped to standard caps.")}</div>
+      <div class="hint">${tr("Deride erozyon/vezikül/ülser sayısı ve yaygınlığına göre puanlayın.","Score extent of erosions/blisters/ulcers on skin regions.")}</div>
+
+      <table class="table">
+        <thead><tr><th>${tr("Cilt bölgeleri","Skin regions")}</th><th class="center">${tr("Skor","Score")}</th><th class="right">${tr("Öneri","Hint")}</th></tr></thead>
+        <tbody class="tight subhdr"><tr><td colspan="3">${tr("Cilt aktivitesi toplamı","Skin activity subtotal")}</td></tr></tbody>
+        <tbody id="pd_skin">`+
+          SKIN_REGIONS.map((name,idx)=>row(name,`pdS${idx}`,0,10)).join('') +
+        `</tbody>
+
+        <tbody class="tight subhdr"><tr><td colspan="3">${tr("Saçlı deri","Scalp")}</td></tr></tbody>
+        <tbody>`+ row(tr("Saçlı deri aktivitesi","Scalp activity"),"pdSc",0,15) +`</tbody>
+
+        <thead><tr><th>${tr("Mukoza bölgeleri","Mucosal regions")}</th><th class="center">${tr("Skor","Score")}</th><th class="right">${tr("Öneri","Hint")}</th></tr></thead>
+        <tbody class="tight subhdr"><tr><td colspan="3">${tr("Mukoza aktivitesi toplamı","Mucosal activity subtotal")}</td></tr></tbody>
+        <tbody id="pd_muc">`+
+          MUC_REGIONS.map((name,idx)=>row(name,`pdM${idx}`,0,10)).join('') +
+        `</tbody>
+
+        <tbody class="tight subhdr"><tr><td colspan="3">${tr("Hasar (skar/hiperpigmentasyon vb.)","Damage (scarring/hyperpigmentation, etc.)")}</td></tr></tbody>
+        <tbody>`+ row(tr("Hasar puanı","Damage score"),"pdD",0,13) +`</tbody>
+      </table>
+
+      <div class="kpi">
+        <span class="chip">${tr("Cilt aktivitesi","Skin activity")}: <span id="pd_skin_sum" class="sum">0</span> / ${MAX.skin}</span>
+        <span class="chip">${tr("Saçlı deri","Scalp")}: <span id="pd_scalp_sum" class="sum">0</span> / ${MAX.scalp}</span>
+        <span class="chip">${tr("Mukoza aktivitesi","Mucosal activity")}: <span id="pd_muc_sum" class="sum">0</span> / ${MAX.muc}</span>
+        <span class="chip">${tr("Hasar","Damage")}: <span id="pd_dam_sum" class="sum">0</span> / ${MAX.dam}</span>
+      </div>
+
+      <div class="score" id="pdaiScore">0</div>
+    </div>`;
+
+    document.getElementById('content').innerHTML = h;
+    window.pdaiUpdate = function(){
+      // skin subtotal
+      let s = 0; for(let i=0;i<SKIN_REGIONS.length;i++) s += +document.getElementById(`pdS${i}`).value||0;
+      s = Math.min(s, MAX.skin);
+      // scalp
+      let sc = Math.min(+document.getElementById('pdSc').value||0, MAX.scalp);
+      // mucosa subtotal
+      let m = 0; for(let i=0;i<MUC_REGIONS.length;i++) m += +document.getElementById(`pdM${i}`).value||0;
+      m = Math.min(m, MAX.muc);
+      // damage
+      let d = Math.min(+document.getElementById('pdD').value||0, MAX.dam);
+
+      document.getElementById('pd_skin_sum').textContent = s;
+      document.getElementById('pd_scalp_sum').textContent = sc;
+      document.getElementById('pd_muc_sum').textContent = m;
+      document.getElementById('pd_dam_sum').textContent = d;
+
+      document.getElementById('pdaiScore').textContent = (s + sc + m + d);
+    };
+    pdaiUpdate();
+  };
+
+  /* =============== BPDAI (Detailed) =============== */
+  window.viewBPDAI = function(){
+    // Standart BPDAI’da cilt aktivitesi iki bileşen üzerinden bölgeler bazında toplanır.
+    const MAX = { skinA:120, skinB:120, muc:120, pru:30 }; // toplam 270 (aktivite 240 + pruritus 30)
+
+    // 12 bölge – her biri için iki cilt bileşeni: (A) erozyon/bül, (B) ürtiker/eritem
+    const SKIN_REGIONS = [
+      tr("Baş/Yüz","Head/Face"), tr("Boyun","Neck"), tr("Göğüs","Chest"),
+      tr("Karın","Abdomen"), tr("Sırt","Back"), tr("Kalça/Gluteal","Buttocks"),
+      tr("Sağ üst ekstremite","Right upper limb"), tr("Sol üst ekstremite","Left upper limb"),
+      tr("Sağ alt ekstremite","Right lower limb"), tr("Sol alt ekstremite","Left lower limb"),
+      tr("El ayası/ayak tabanı","Palms/Soles"), tr("Genital/perineal","Genital/Perineal")
+    ];
+
+    const MUC_REGIONS = [
+      tr("Oral","Oral"), tr("Nazal","Nasal"), tr("Konjonktival","Conjunctival"),
+      tr("Larinks","Laryngeal"), tr("Özofageal","Esophageal"), tr("Genital","Genital"),
+      tr("Anorektal","Anorectal"), tr("Diğer","Other")
+    ];
+
+    // Satır üretici
+    const skinRow = (name, idx)=>(
+      `<tr>
+        <td>${name}</td>
+        <td class="center"><input id="bpA${idx}" type="number" min="0" max="10" step="1" value="0" oninput="bpdaiUpdate()"></td>
+        <td class="center"><input id="bpB${idx}" type="number" min="0" max="10" step="1" value="0" oninput="bpdaiUpdate()"></td>
+        <td class="right hint">0–10</td>
+      </tr>`
+    );
+    const mucRow = (name, idx)=>(
+      `<tr>
+        <td>${name}</td>
+        <td class="center"><input id="bpM${idx}" type="number" min="0" max="15" step="1" value="0" oninput="bpdaiUpdate()"></td>
+        <td class="right hint">0–15</td>
+      </tr>`
+    );
+
+    let h = `
+    <div class="card table-card">
+      <div class="title">BPDAI</div>
+      <div class="pillline">${tr("Aralık: 0–270 (maks 270) — cilt aktivitesi iki bileşen olarak bölgelerden toplanır.","Range: 0–270 (max 270) — skin activity sums two components across regions.")}</div>
+
+      <table class="table">
+        <thead>
+          <tr><th>${tr("Cilt bölgeleri","Skin regions")}</th>
+              <th class="center">${tr("A) Erozyon/Bül","A) Erosion/Blister")}</th>
+              <th class="center">${tr("B) Ürtiker/Eritem","B) Urticarial/Erythema")}</th>
+              <th class="right">${tr("Öneri","Hint")}</th></tr>
+        </thead>
+        <tbody class="tight subhdr"><tr><td colspan="4">${tr("Cilt aktivitesi (A+B) toplamı","Skin activity (A+B) subtotal")}</td></tr></tbody>
+        <tbody id="bp_skin">`+
+          SKIN_REGIONS.map((name,i)=>skinRow(name,i)).join('') +
+        `</tbody>
+
+        <thead>
+          <tr><th>${tr("Mukoza bölgeleri","Mucosal regions")}</th>
+              <th class="center" colspan="2">${tr("Mukoza aktivitesi","Mucosal activity")}</th>
+              <th class="right">${tr("Öneri","Hint")}</th></tr>
+        </thead>
+        <tbody class="tight subhdr"><tr><td colspan="4">${tr("Mukoza toplamı","Mucosal subtotal")}</td></tr></tbody>
+        <tbody id="bp_muc">`+
+          MUC_REGIONS.map((name,i)=>mucRow(name,i)).join('') +
+        `</tbody>
+
+        <tbody class="tight subhdr">
+          <tr><td>${tr("Kaşıntı VAS (0–30)","Pruritus VAS (0–30)")}</td>
+              <td class="center" colspan="2"><input id="bpPru" type="number" min="0" max="30" step="1" value="0" oninput="bpdaiUpdate()"></td>
+              <td class="right hint">0–30</td></tr>
+        </tbody>
+      </table>
+
+      <div class="kpi">
+        <span class="chip">${tr("Cilt A","Skin A")}: <span id="bp_skinA_sum" class="sum">0</span> / ${MAX.skinA}</span>
+        <span class="chip">${tr("Cilt B","Skin B")}: <span id="bp_skinB_sum" class="sum">0</span> / ${MAX.skinB}</span>
+        <span class="chip">${tr("Mukoza","Mucosa")}: <span id="bp_muc_sum" class="sum">0</span> / ${MAX.muc}</span>
+        <span class="chip">${tr("Kaşıntı","Pruritus")}: <span id="bp_pru_sum" class="sum">0</span> / ${MAX.pru}</span>
+      </div>
+
+      <div class="score" id="bpdaiScore">0</div>
+    </div>`;
+
+    document.getElementById('content').innerHTML = h;
+
+    window.bpdaiUpdate = function(){
+      // skin A/B
+      let a=0,b=0;
+      for(let i=0;i<SKIN_REGIONS.length;i++){
+        a += +document.getElementById(`bpA${i}`).value||0;
+        b += +document.getElementById(`bpB${i}`).value||0;
+      }
+      a = Math.min(a, MAX.skinA);
+      b = Math.min(b, MAX.skinB);
+
+      // mucosa
+      let m=0;
+      for(let i=0;i<MUC_REGIONS.length;i++){
+        m += +document.getElementById(`bpM${i}`).value||0;
+      }
+      m = Math.min(m, MAX.muc);
+
+      // pruritus
+      let p = Math.min(+document.getElementById('bpPru').value||0, MAX.pru);
+
+      document.getElementById('bp_skinA_sum').textContent = a;
+      document.getElementById('bp_skinB_sum').textContent = b;
+      document.getElementById('bp_muc_sum').textContent   = m;
+      document.getElementById('bp_pru_sum').textContent   = p;
+
+      document.getElementById('bpdaiScore').textContent = (a+b+m+p);
+    };
+    bpdaiUpdate();
+  };
+
+})();
+</script>
+<!-- ====== /PDAI & BPDAI — Detailed Regional Tables ====== -->
+
+<!-- ==== prevent duplicate signature ==== -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const sigs = document.querySelectorAll(".signature");
+  if (sigs.length > 1) {
+    for (let i = 1; i < sigs.length; i++) sigs[i].remove();
+  }
+});
+</script>
+<!-- ==== /prevent duplicate signature ==== -->
+
+<!-- ==== RedrockMD signature ==== -->
+<style>
+  .signature {
+    text-align: center;
+    font-size: 12.5px;
+    opacity: 0.45;
+    margin: 28px 0 10px 0;
+    letter-spacing: 0.3px;
+    transition: opacity .3s ease;
+  }
+  .signature:hover {
+    opacity: 0.75;
+  }
+</style>
+
+<div class="signature">by RedrockMD</div>
+<!-- ==== /RedrockMD signature ==== -->
+
+</body>
+</html>
